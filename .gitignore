@@ -135,3 +135,6 @@ docs/generated/
 # Cache directories
 .cache/
 .gradle/
+
+# PDF files
+PDF for Automation Testing.pdf
