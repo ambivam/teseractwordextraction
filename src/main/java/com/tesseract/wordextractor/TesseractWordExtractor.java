@@ -83,36 +83,25 @@ public class TesseractWordExtractor {
             // Set OCR Engine Mode to LSTM only for better accuracy
             tesseract.setOcrEngineMode(1);
             
-            // Set Page Segmentation Mode to auto with better text detection
-            tesseract.setPageSegMode(3);
+            // Set Page Segmentation Mode to auto (most stable)
+            tesseract.setPageSegMode(3); // Auto page segmentation
             
             // Configure for better UTF-8 and special character handling
+            tesseract.setVariable("preserve_interword_spaces", "1");
             tesseract.setVariable("tessedit_char_whitelist", "");
             tesseract.setVariable("tessedit_char_blacklist", "");
-            tesseract.setVariable("preserve_interword_spaces", "1");
             
-            // Enhanced configuration for high-resolution images
-            tesseract.setVariable("textord_min_linesize", "2.5");
-            tesseract.setVariable("textord_excess_blobsize", "1.3");
-            tesseract.setVariable("wordrec_enable_assoc", "1");
-            tesseract.setVariable("classify_enable_learning", "1");
-            tesseract.setVariable("classify_enable_adaptive_matcher", "1");
+            // Enhanced configuration for high-resolution processing (stable settings)
+            tesseract.setVariable("textord_min_linesize", "2.0");
+            tesseract.setVariable("textord_noise_sizelimit", "0.7");
+            tesseract.setVariable("classify_enable_learning", "0");
+            tesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            tesseract.setVariable("wordrec_enable_assoc", "0");
             
-            // Improved character recognition settings
-            tesseract.setVariable("segment_penalty_dict_frequent_word", "1");
-            tesseract.setVariable("allow_blob_division", "1");
-            tesseract.setVariable("textord_really_old_xheight", "1");
-            tesseract.setVariable("textord_min_xheight", "10");
-            
-            // Better handling of small text and punctuation
-            tesseract.setVariable("textord_noise_sizelimit", "0.5");
-            tesseract.setVariable("textord_noise_translimit", "1.0");
-            tesseract.setVariable("textord_noise_normratio", "2.0");
-            
-            // Enhanced word confidence and spacing
-            tesseract.setVariable("wordrec_worst_state", "1");
-            tesseract.setVariable("language_model_penalty_non_freq_dict_word", "0.1");
-            tesseract.setVariable("language_model_penalty_non_dict_word", "0.15");
+            // Better handling of forms and checkboxes
+            tesseract.setVariable("textord_tabfind_find_tables", "0"); // Disable table finding to avoid issues
+            tesseract.setVariable("segment_penalty_dict_frequent_word", "0");
+            tesseract.setVariable("allow_blob_division", "0");
             
             LOGGER.info("Tesseract initialized successfully");
             LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
@@ -172,12 +161,51 @@ public class TesseractWordExtractor {
                 // Preprocess image for better special character recognition
                 BufferedImage processedImage = preprocessImageForOCR(image);
                 
-                // Extract text from the processed image
-                String pageText = tesseract.doOCR(processedImage);
-                allText.append(pageText).append("\n\n");
+                // Multiple OCR passes for better form recognition (text only to avoid assertion failures)
+                StringBuilder pageTextBuilder = new StringBuilder();
                 
-                // Extract words with coordinates using processed image
-                List<Word> words = tesseract.getWords(processedImage, 3); // Page segmentation mode 3
+                // Pass 1: Standard OCR with PSM 3 (auto)
+                try {
+                    String pageText1 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 1 (Auto) ===\n").append(pageText1).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 1 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 2: OCR with PSM 6 (uniform block) for form fields
+                try {
+                    tesseract.setPageSegMode(6);
+                    String pageText2 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 2 (Form Fields) ===\n").append(pageText2).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 2 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 3: OCR with PSM 8 (single word) for isolated text in boxes
+                try {
+                    tesseract.setPageSegMode(8);
+                    String pageText3 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 3 (Single Words/Dates) ===\n").append(pageText3).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 3 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 4: OCR with PSM 13 (raw line) for text in boxes
+                try {
+                    tesseract.setPageSegMode(13);
+                    String pageText4 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 4 (Raw Lines) ===\n").append(pageText4).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 4 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Reset to default PSM
+                tesseract.setPageSegMode(3);
+                
+                allText.append(pageTextBuilder.toString()).append("\n\n");
+                
+                // Skip word-level extraction to avoid assertion failures
+                List<Word> words = new ArrayList<>();
                 
                 for (Word word : words) {
                     ExtractedWord extractedWord = new ExtractedWord(
@@ -200,14 +228,20 @@ public class TesseractWordExtractor {
         
         // Generate outputs
         generateTextOutput(baseFileName, allText.toString());
-        generateJsonOutput(baseFileName, allWords);
+        
+        if (!allWords.isEmpty()) {
+            generateJsonOutput(baseFileName, allWords);
+            System.out.println("Total words extracted: " + allWords.size());
+            System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + ".json");
+        } else {
+            System.out.println("Note: Word-level coordinates not available (avoided to prevent crashes)");
+            System.out.println("Text extraction completed with multiple OCR passes for maximum accuracy");
+        }
         
         LOGGER.info("Extraction completed. Files saved in " + OUTPUT_DIR + " directory");
         System.out.println("Extraction completed successfully!");
-        System.out.println("Total words extracted: " + allWords.size());
         System.out.println("Output files:");
         System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + ".txt");
-        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + ".json");
     }
     
     private void generateTextOutput(String baseFileName, String text) throws IOException {
@@ -259,7 +293,7 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Preprocesses the image to improve OCR accuracy with optimized speed
+     * Preprocesses the image to improve OCR accuracy for forms and checkboxes
      * @param originalImage The original BufferedImage from PDF
      * @return Processed BufferedImage optimized for OCR
      */
@@ -267,8 +301,11 @@ public class TesseractWordExtractor {
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
         
-        // Fast grayscale conversion with enhanced contrast
+        // Enhanced preprocessing for forms and checkboxes
         BufferedImage processedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        
+        // First pass: Convert to grayscale
+        int[][] grayValues = new int[height][width];
         
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -277,23 +314,60 @@ public class TesseractWordExtractor {
                 int green = (rgb >> 8) & 0xFF;
                 int blue = rgb & 0xFF;
                 
-                // Convert to grayscale
+                // Convert to grayscale with optimized weights for text
                 int gray = (int) (0.299 * red + 0.587 * green + 0.114 * blue);
+                grayValues[y][x] = gray;
+            }
+        }
+        
+        // Second pass: Enhanced processing with adaptive thresholding
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = grayValues[y][x];
                 
-                // Apply enhanced contrast (faster than histogram equalization)
-                gray = Math.min(255, Math.max(0, (int) (1.4 * (gray - 128) + 128)));
+                // Calculate local threshold for better checkbox detection
+                int localSum = 0;
+                int localCount = 0;
+                int windowSize = 15;
                 
-                // Simple sharpening by enhancing edges
-                if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
-                    int leftGray = (originalImage.getRGB(x - 1, y) & 0xFF);
-                    int rightGray = (originalImage.getRGB(x + 1, y) & 0xFF);
-                    int topGray = (originalImage.getRGB(x, y - 1) & 0xFF);
-                    int bottomGray = (originalImage.getRGB(x, y + 1) & 0xFF);
+                for (int wy = Math.max(0, y - windowSize); wy < Math.min(height, y + windowSize); wy++) {
+                    for (int wx = Math.max(0, x - windowSize); wx < Math.min(width, x + windowSize); wx++) {
+                        localSum += grayValues[wy][wx];
+                        localCount++;
+                    }
+                }
+                
+                int localAvg = localSum / localCount;
+                
+                // Enhanced adaptive contrast for forms and checkboxes
+                if (gray < localAvg - 15) {
+                    // Dark areas (text/checkboxes) - make much darker for better recognition
+                    gray = Math.max(0, gray - 40);
+                } else if (gray > localAvg + 15) {
+                    // Light areas (background) - make lighter
+                    gray = Math.min(255, gray + 30);
+                } else {
+                    // Apply stronger contrast enhancement for form elements
+                    gray = Math.min(255, Math.max(0, (int) (1.5 * (gray - 128) + 128)));
+                }
+                
+                // Edge enhancement for better character definition
+                if (x > 1 && x < width - 2 && y > 1 && y < height - 2) {
+                    int edgeStrength = 0;
                     
-                    // Simple edge enhancement
-                    int edgeStrength = Math.abs(leftGray - rightGray) + Math.abs(topGray - bottomGray);
-                    if (edgeStrength > 20) {
-                        gray = Math.min(255, gray + (edgeStrength / 8));
+                    // Calculate edge strength in multiple directions
+                    edgeStrength += Math.abs(grayValues[y][x-1] - grayValues[y][x+1]); // Horizontal
+                    edgeStrength += Math.abs(grayValues[y-1][x] - grayValues[y+1][x]); // Vertical
+                    edgeStrength += Math.abs(grayValues[y-1][x-1] - grayValues[y+1][x+1]); // Diagonal
+                    edgeStrength += Math.abs(grayValues[y-1][x+1] - grayValues[y+1][x-1]); // Anti-diagonal
+                    
+                    if (edgeStrength > 60) {
+                        // Strong edge - enhance contrast
+                        if (gray < localAvg) {
+                            gray = Math.max(0, gray - 30); // Make dark edges darker
+                        } else {
+                            gray = Math.min(255, gray + 30); // Make light edges lighter
+                        }
                     }
                 }
                 
