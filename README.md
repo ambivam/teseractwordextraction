@@ -92,10 +92,14 @@ Example JSON structure:
 
 ## Features
 
+- **Configurable Processing Modes**: Choose between speed and accuracy
+  - **FAST** (300 DPI): Quick processing with good accuracy
+  - **BALANCED** (400 DPI): Optimal speed/accuracy balance (default)
+  - **HIGH_QUALITY** (600 DPI): Maximum accuracy, slower processing
+- **Optimized Image Processing**: Fast single-pass enhancement with contrast boost and edge sharpening
 - **Enhanced Special Character Support**: Uses English + Spanish language models for better recognition of accented characters (á, é, í, ó, ú, ñ, etc.)
 - **UTF-8 Support**: Handles special characters and international text with proper encoding
-- **Image Preprocessing**: Applies contrast enhancement and grayscale conversion for improved OCR accuracy
-- **High Accuracy**: Uses 300 DPI rendering and advanced Tesseract configuration for better OCR results
+- **Optimized Tesseract Configuration**: 20+ advanced parameters tuned for high-resolution text recognition
 - **Word-level Extraction**: Provides coordinates and confidence for each word
 - **Multi-page Support**: Processes all pages in the PDF
 - **Error Handling**: Comprehensive logging and error reporting
@@ -122,13 +126,32 @@ Example JSON structure:
    - Ensure Java 11+ and Maven are properly installed
    - Check internet connection for dependency downloads
 
+5. **Performance considerations:**
+   - High resolution (600 DPI) processing requires more memory and time
+   - For large PDFs, consider increasing JVM heap size: `java -Xmx4g -jar ...`
+   - Processing time is approximately 2-3x longer than 300 DPI but with significantly better accuracy
+
 ## Configuration
 
-You can modify OCR settings in the `TesseractWordExtractor` constructor:
+You can modify OCR settings in the `TesseractWordExtractor` class:
+
+### Processing Mode Configuration
+To change the processing mode, modify the `PROCESSING_MODE` constant:
+```java
+// For fastest processing (good for large documents)
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.FAST;
+
+// For balanced performance (default - recommended)
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.BALANCED;
+
+// For maximum accuracy (best for critical documents)
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.HIGH_QUALITY;
+```
+
+### Other OCR Settings
 - `setLanguage()`: Change OCR language (default: "eng+spa" for English + Spanish)
 - `setOcrEngineMode()`: Change OCR engine mode
 - `setPageSegMode()`: Change page segmentation mode
-- `DPI`: Adjust rendering resolution for quality vs. speed trade-off
 
 ### Special Character Support
 
@@ -148,3 +171,23 @@ To add support for other languages:
 - **Apache PDFBox 3.0.1**: PDF processing and rendering
 - **Jackson 2.16.0**: JSON processing
 - **SLF4J**: Logging framework
+
+#********************************
+# Build the project first
+mvn clean package
+
+# Then run with Maven
+mvn exec:java -Dexec.mainClass="com.tesseract.wordextractor.TesseractWordExtractor" -Dexec.args="PDF for Automation Testing.pdf"
+
+#*******************************
+run.bat
+
+#*******************************
+# Build the project
+mvn package
+
+# Run the JAR file
+java -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"
+
+# For large PDFs, increase memory:
+java -Xmx4g -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"

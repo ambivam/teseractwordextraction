@@ -25,7 +25,19 @@ import java.util.logging.Level;
 public class TesseractWordExtractor {
     private static final Logger LOGGER = Logger.getLogger(TesseractWordExtractor.class.getName());
     private static final String OUTPUT_DIR = "output";
-    private static final int DPI = 300; // High DPI for better OCR accuracy
+    
+    // Performance modes - users can modify this for their needs
+    public enum ProcessingMode {
+        FAST(300),      // Fast processing, good accuracy
+        BALANCED(400),  // Balanced speed and accuracy (default)
+        HIGH_QUALITY(600); // Maximum accuracy, slower processing
+        
+        private final int dpi;
+        ProcessingMode(int dpi) { this.dpi = dpi; }
+        public int getDpi() { return dpi; }
+    }
+    
+    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.BALANCED;
     
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;
@@ -71,7 +83,7 @@ public class TesseractWordExtractor {
             // Set OCR Engine Mode to LSTM only for better accuracy
             tesseract.setOcrEngineMode(1);
             
-            // Set Page Segmentation Mode to auto
+            // Set Page Segmentation Mode to auto with better text detection
             tesseract.setPageSegMode(3);
             
             // Configure for better UTF-8 and special character handling
@@ -79,13 +91,31 @@ public class TesseractWordExtractor {
             tesseract.setVariable("tessedit_char_blacklist", "");
             tesseract.setVariable("preserve_interword_spaces", "1");
             
-            // Enable better handling of accented characters
-            tesseract.setVariable("textord_really_old_xheight", "1");
+            // Enhanced configuration for high-resolution images
+            tesseract.setVariable("textord_min_linesize", "2.5");
+            tesseract.setVariable("textord_excess_blobsize", "1.3");
+            tesseract.setVariable("wordrec_enable_assoc", "1");
+            tesseract.setVariable("classify_enable_learning", "1");
+            tesseract.setVariable("classify_enable_adaptive_matcher", "1");
+            
+            // Improved character recognition settings
             tesseract.setVariable("segment_penalty_dict_frequent_word", "1");
             tesseract.setVariable("allow_blob_division", "1");
-            tesseract.setVariable("wordrec_enable_assoc", "1");
+            tesseract.setVariable("textord_really_old_xheight", "1");
+            tesseract.setVariable("textord_min_xheight", "10");
+            
+            // Better handling of small text and punctuation
+            tesseract.setVariable("textord_noise_sizelimit", "0.5");
+            tesseract.setVariable("textord_noise_translimit", "1.0");
+            tesseract.setVariable("textord_noise_normratio", "2.0");
+            
+            // Enhanced word confidence and spacing
+            tesseract.setVariable("wordrec_worst_state", "1");
+            tesseract.setVariable("language_model_penalty_non_freq_dict_word", "0.1");
+            tesseract.setVariable("language_model_penalty_non_dict_word", "0.15");
             
             LOGGER.info("Tesseract initialized successfully");
+            LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to initialize Tesseract", e);
             throw new RuntimeException("Tesseract initialization failed", e);
@@ -135,8 +165,9 @@ public class TesseractWordExtractor {
             for (int pageIndex = 0; pageIndex < numberOfPages; pageIndex++) {
                 LOGGER.info("Processing page " + (pageIndex + 1) + " of " + numberOfPages);
                 
-                // Convert PDF page to image with high quality for better OCR
-                BufferedImage image = pdfRenderer.renderImageWithDPI(pageIndex, DPI, ImageType.RGB);
+                // Convert PDF page to image using selected processing mode
+                int currentDpi = PROCESSING_MODE.getDpi();
+                BufferedImage image = pdfRenderer.renderImageWithDPI(pageIndex, currentDpi, ImageType.RGB);
                 
                 // Preprocess image for better special character recognition
                 BufferedImage processedImage = preprocessImageForOCR(image);
@@ -228,37 +259,45 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Preprocesses the image to improve OCR accuracy for special characters
+     * Preprocesses the image to improve OCR accuracy with optimized speed
      * @param originalImage The original BufferedImage from PDF
      * @return Processed BufferedImage optimized for OCR
      */
     private BufferedImage preprocessImageForOCR(BufferedImage originalImage) {
-        // Create a new image with better contrast and sharpness
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
         
-        // Create a new RGB image
+        // Fast grayscale conversion with enhanced contrast
         BufferedImage processedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         
-        // Apply contrast enhancement and noise reduction
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int rgb = originalImage.getRGB(x, y);
-                
-                // Extract RGB components
                 int red = (rgb >> 16) & 0xFF;
                 int green = (rgb >> 8) & 0xFF;
                 int blue = rgb & 0xFF;
                 
-                // Convert to grayscale for better text recognition
+                // Convert to grayscale
                 int gray = (int) (0.299 * red + 0.587 * green + 0.114 * blue);
                 
-                // Apply contrast enhancement
-                gray = Math.min(255, Math.max(0, (int) (1.2 * (gray - 128) + 128)));
+                // Apply enhanced contrast (faster than histogram equalization)
+                gray = Math.min(255, Math.max(0, (int) (1.4 * (gray - 128) + 128)));
                 
-                // Create enhanced RGB value
-                int enhancedRgb = (gray << 16) | (gray << 8) | gray;
-                processedImage.setRGB(x, y, enhancedRgb);
+                // Simple sharpening by enhancing edges
+                if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+                    int leftGray = (originalImage.getRGB(x - 1, y) & 0xFF);
+                    int rightGray = (originalImage.getRGB(x + 1, y) & 0xFF);
+                    int topGray = (originalImage.getRGB(x, y - 1) & 0xFF);
+                    int bottomGray = (originalImage.getRGB(x, y + 1) & 0xFF);
+                    
+                    // Simple edge enhancement
+                    int edgeStrength = Math.abs(leftGray - rightGray) + Math.abs(topGray - bottomGray);
+                    if (edgeStrength > 20) {
+                        gray = Math.min(255, gray + (edgeStrength / 8));
+                    }
+                }
+                
+                processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
             }
         }
         
