@@ -210,3 +210,7 @@ timeout /t 2
 mvn clean package
 
 #*******************
+
+java -cp "target/word-extractor-1.0.0.jar;target/lib/*" com.tesseract.wordextractor.TesseractWordExtractor "PDF for Automation Testing.pdf"
+
+#*******************

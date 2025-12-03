@@ -5,8 +5,20 @@ import net.sourceforge.tess4j.TesseractException;
 import net.sourceforge.tess4j.Word;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.apache.pdfbox.pdmodel.interactive.form.PDField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDCheckBox;
+import org.apache.pdfbox.pdmodel.interactive.form.PDRadioButton;
+import org.apache.pdfbox.pdmodel.interactive.form.PDComboBox;
+import org.apache.pdfbox.pdmodel.interactive.form.PDListBox;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -18,7 +30,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -41,6 +55,7 @@ public class TesseractWordExtractor {
     
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;
+    private String tesseractDataPath;
     
     public TesseractWordExtractor() {
         this.tesseract = new Tesseract();
@@ -61,6 +76,7 @@ public class TesseractWordExtractor {
             for (String path : possiblePaths) {
                 if (path != null && new File(path).exists()) {
                     tesseract.setDatapath(path);
+                    this.tesseractDataPath = path;
                     tessdataFound = true;
                     LOGGER.info("Using tessdata path: " + path);
                     break;
@@ -144,12 +160,23 @@ public class TesseractWordExtractor {
         
         List<ExtractedWord> allWords = new ArrayList<>();
         StringBuilder allText = new StringBuilder();
+        Map<String, Object> formData = new HashMap<>();
         
         try (PDDocument document = Loader.loadPDF(new File(pdfFilePath))) {
+            // Step 1: Extract form fields using PDFBox
+            Map<String, String> extractedFormFields = extractFormFields(document);
+            formData.put("formFields", extractedFormFields);
+            
+            // Step 2: Extract regular text using PDFBox text stripper
+            String extractedText = extractTextContent(document);
+            formData.put("extractedText", extractedText);
+            
+            // Step 3: Enhanced OCR processing
             PDFRenderer pdfRenderer = new PDFRenderer(document);
             int numberOfPages = document.getNumberOfPages();
             
             LOGGER.info("PDF has " + numberOfPages + " pages");
+            LOGGER.info("Found " + extractedFormFields.size() + " form fields");
             
             for (int pageIndex = 0; pageIndex < numberOfPages; pageIndex++) {
                 LOGGER.info("Processing page " + (pageIndex + 1) + " of " + numberOfPages);
@@ -158,90 +185,61 @@ public class TesseractWordExtractor {
                 int currentDpi = PROCESSING_MODE.getDpi();
                 BufferedImage image = pdfRenderer.renderImageWithDPI(pageIndex, currentDpi, ImageType.RGB);
                 
-                // Preprocess image for better special character recognition
-                BufferedImage processedImage = preprocessImageForOCR(image);
+                // Enhanced preprocessing for form fields
+                BufferedImage processedImage = preprocessImageForFormOCR(image);
                 
-                // Multiple OCR passes for better form recognition (text only to avoid assertion failures)
+                // Multiple OCR passes optimized for forms
                 StringBuilder pageTextBuilder = new StringBuilder();
                 
-                // Pass 1: Standard OCR with PSM 3 (auto)
+                // Pass 1: Standard OCR with PSM 3 (auto) 
                 try {
-                    String pageText1 = tesseract.doOCR(processedImage);
-                    pageTextBuilder.append("=== Pass 1 (Auto) ===\n").append(pageText1).append("\n\n");
+                    String pageText1 = performOCRWithConfig(processedImage, 3, "Auto Detection");
+                    pageTextBuilder.append("=== OCR Pass 1 (Auto Detection) ===\n").append(pageText1).append("\n\n");
                 } catch (Exception e) {
                     LOGGER.warning("Pass 1 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
                 }
                 
-                // Pass 2: OCR with PSM 6 (uniform block) for form fields
+                // Pass 2: Form-optimized OCR with PSM 6 (uniform block)
                 try {
-                    tesseract.setPageSegMode(6);
-                    String pageText2 = tesseract.doOCR(processedImage);
-                    pageTextBuilder.append("=== Pass 2 (Form Fields) ===\n").append(pageText2).append("\n\n");
+                    String pageText2 = performOCRWithConfig(processedImage, 6, "Form Fields");
+                    pageTextBuilder.append("=== OCR Pass 2 (Form Fields) ===\n").append(pageText2).append("\n\n");
                 } catch (Exception e) {
                     LOGGER.warning("Pass 2 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
                 }
                 
-                // Pass 3: OCR with PSM 8 (single word) for isolated text in boxes
+                // Pass 3: Single word detection for text boxes
                 try {
-                    tesseract.setPageSegMode(8);
-                    String pageText3 = tesseract.doOCR(processedImage);
-                    pageTextBuilder.append("=== Pass 3 (Single Words/Dates) ===\n").append(pageText3).append("\n\n");
+                    String pageText3 = performOCRWithConfig(processedImage, 8, "Single Words/Dates");
+                    pageTextBuilder.append("=== OCR Pass 3 (Single Words/Dates) ===\n").append(pageText3).append("\n\n");
                 } catch (Exception e) {
                     LOGGER.warning("Pass 3 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
                 }
                 
-                // Pass 4: OCR with PSM 13 (raw line) for text in boxes
+                // Pass 4: Checkbox and symbol detection
                 try {
-                    tesseract.setPageSegMode(13);
-                    String pageText4 = tesseract.doOCR(processedImage);
-                    pageTextBuilder.append("=== Pass 4 (Raw Lines) ===\n").append(pageText4).append("\n\n");
+                    String pageText4 = performCheckboxOCR(processedImage);
+                    pageTextBuilder.append("=== OCR Pass 4 (Checkboxes & Symbols) ===\n").append(pageText4).append("\n\n");
                 } catch (Exception e) {
                     LOGGER.warning("Pass 4 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
                 }
                 
-                // Reset to default PSM
-                tesseract.setPageSegMode(3);
-                
                 allText.append(pageTextBuilder.toString()).append("\n\n");
-                
-                // Skip word-level extraction to avoid assertion failures
-                List<Word> words = new ArrayList<>();
-                
-                for (Word word : words) {
-                    ExtractedWord extractedWord = new ExtractedWord(
-                        word.getText().trim(),
-                        pageIndex + 1,
-                        word.getBoundingBox().x,
-                        word.getBoundingBox().y,
-                        word.getBoundingBox().width,
-                        word.getBoundingBox().height,
-                        word.getConfidence()
-                    );
-                    
-                    // Only add non-empty words
-                    if (!extractedWord.getText().isEmpty()) {
-                        allWords.add(extractedWord);
-                    }
-                }
             }
         }
         
-        // Generate outputs
-        generateTextOutput(baseFileName, allText.toString());
-        
-        if (!allWords.isEmpty()) {
-            generateJsonOutput(baseFileName, allWords);
-            System.out.println("Total words extracted: " + allWords.size());
-            System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + ".json");
-        } else {
-            System.out.println("Note: Word-level coordinates not available (avoided to prevent crashes)");
-            System.out.println("Text extraction completed with multiple OCR passes for maximum accuracy");
-        }
+        // Generate comprehensive outputs
+        generateEnhancedTextOutput(baseFileName, allText.toString(), formData);
+        generateEnhancedJsonOutput(baseFileName, allWords, formData);
         
         LOGGER.info("Extraction completed. Files saved in " + OUTPUT_DIR + " directory");
-        System.out.println("Extraction completed successfully!");
+        System.out.println("=== EXTRACTION COMPLETED SUCCESSFULLY ===");
         System.out.println("Output files:");
-        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + ".txt");
+        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.txt");
+        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.json");
+        System.out.println("\nExtraction Summary:");
+        System.out.println("- Form fields found: " + ((Map<?, ?>) formData.get("formFields")).size());
+        System.out.println("- OCR processing: 4 passes completed");
+        System.out.println("- Text extraction: PDFBox + Enhanced OCR");
     }
     
     private void generateTextOutput(String baseFileName, String text) throws IOException {
@@ -290,6 +288,327 @@ public class TesseractWordExtractor {
         String fileName = path.getFileName().toString();
         int lastDotIndex = fileName.lastIndexOf('.');
         return lastDotIndex > 0 ? fileName.substring(0, lastDotIndex) : fileName;
+    }
+    
+    /**
+     * Extract form fields from PDF using PDFBox
+     */
+    private Map<String, String> extractFormFields(PDDocument document) {
+        Map<String, String> formFields = new HashMap<>();
+        
+        try {
+            PDAcroForm acroForm = document.getDocumentCatalog().getAcroForm();
+            if (acroForm != null) {
+                LOGGER.info("PDF contains interactive form fields");
+                
+                for (PDField field : acroForm.getFields()) {
+                    String fieldName = field.getFullyQualifiedName();
+                    String fieldValue = "";
+                    
+                    try {
+                        if (field instanceof PDTextField) {
+                            fieldValue = ((PDTextField) field).getValue();
+                        } else if (field instanceof PDCheckBox) {
+                            fieldValue = ((PDCheckBox) field).isChecked() ? "☑" : "☐";
+                        } else if (field instanceof PDRadioButton) {
+                            fieldValue = ((PDRadioButton) field).getValue();
+                        } else if (field instanceof PDComboBox) {
+                            List<String> values = ((PDComboBox) field).getValue();
+                            fieldValue = values != null && !values.isEmpty() ? values.get(0) : "";
+                        } else if (field instanceof PDListBox) {
+                            List<String> selectedValues = ((PDListBox) field).getValue();
+                            fieldValue = selectedValues != null ? String.join(", ", selectedValues) : "";
+                        } else {
+                            fieldValue = field.getValueAsString();
+                        }
+                        
+                        if (fieldValue == null) {
+                            fieldValue = "";
+                        }
+                        
+                        formFields.put(fieldName, fieldValue);
+                        LOGGER.info("Form field: " + fieldName + " = " + fieldValue);
+                        
+                    } catch (Exception e) {
+                        LOGGER.warning("Error reading form field " + fieldName + ": " + e.getMessage());
+                        formFields.put(fieldName, "[Error reading field]");
+                    }
+                }
+            } else {
+                LOGGER.info("PDF does not contain interactive form fields");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Error extracting form fields: " + e.getMessage());
+        }
+        
+        return formFields;
+    }
+    
+    /**
+     * Extract text content using PDFBox text stripper
+     */
+    private String extractTextContent(PDDocument document) {
+        StringBuilder extractedText = new StringBuilder();
+        
+        try {
+            PDFTextStripper textStripper = new PDFTextStripper();
+            textStripper.setSortByPosition(true);
+            textStripper.setLineSeparator("\n");
+            
+            String text = textStripper.getText(document);
+            extractedText.append(text);
+            
+            LOGGER.info("Extracted " + text.length() + " characters using PDFBox text stripper");
+            
+        } catch (Exception e) {
+            LOGGER.warning("Error extracting text content: " + e.getMessage());
+            extractedText.append("[Error extracting text content]");
+        }
+        
+        return extractedText.toString();
+    }
+    
+    /**
+     * Perform OCR with specific configuration
+     */
+    private String performOCRWithConfig(BufferedImage image, int pageSegMode, String passName) throws TesseractException {
+        tesseract.setPageSegMode(pageSegMode);
+        
+        // Enhanced configuration for specific pass
+        switch (pageSegMode) {
+            case 6: // Form fields
+                tesseract.setVariable("textord_tabfind_find_tables", "1");
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789áéíóúñÁÉÍÓÚÑüÜ¿¡.,;:()[]{}/-_@#$%&*+=<>?!\"' ");
+                break;
+            case 8: // Single words/dates
+                tesseract.setVariable("tessedit_char_whitelist", "0123456789/.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+                break;
+            default:
+                tesseract.setVariable("tessedit_char_whitelist", "");
+                break;
+        }
+        
+        String result = tesseract.doOCR(image);
+        
+        // Reset to default
+        tesseract.setPageSegMode(3);
+        tesseract.setVariable("tessedit_char_whitelist", "");
+        
+        return result;
+    }
+    
+    /**
+     * Specialized OCR for checkbox and symbol detection
+     */
+    private String performCheckboxOCR(BufferedImage image) throws TesseractException {
+        // Create a specialized Tesseract instance for checkbox detection
+        Tesseract checkboxTesseract = new Tesseract();
+        
+        try {
+            // Use same datapath as main instance
+            checkboxTesseract.setDatapath(this.tesseractDataPath);
+            checkboxTesseract.setLanguage("eng");
+            checkboxTesseract.setOcrEngineMode(1);
+            checkboxTesseract.setPageSegMode(6);
+            
+            // Checkbox-specific character whitelist
+            checkboxTesseract.setVariable("tessedit_char_whitelist", "XxχΧ✓✗☐☑☒□■▢▣⬜⬛◯○●◉◎⚪⚫🔲🔳▫▪");
+            checkboxTesseract.setVariable("classify_enable_learning", "0");
+            checkboxTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            
+            return checkboxTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Checkbox OCR failed: " + e.getMessage());
+            return "[Checkbox detection failed]";
+        }
+    }
+    
+    /**
+     * Enhanced preprocessing specifically optimized for form field detection
+     */
+    private BufferedImage preprocessImageForFormOCR(BufferedImage originalImage) {
+        int width = originalImage.getWidth();
+        int height = originalImage.getHeight();
+        
+        // Enhanced preprocessing for forms and checkboxes with better contrast
+        BufferedImage processedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        
+        // First pass: Convert to grayscale with optimized weights for forms
+        int[][] grayValues = new int[height][width];
+        
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = originalImage.getRGB(x, y);
+                int red = (rgb >> 16) & 0xFF;
+                int green = (rgb >> 8) & 0xFF;
+                int blue = rgb & 0xFF;
+                
+                // Enhanced grayscale conversion for form elements
+                int gray = (int) (0.299 * red + 0.587 * green + 0.114 * blue);
+                grayValues[y][x] = gray;
+            }
+        }
+        
+        // Second pass: Advanced adaptive processing for form fields
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = grayValues[y][x];
+                
+                // Calculate adaptive local threshold for form field detection
+                int localSum = 0;
+                int localCount = 0;
+                int windowSize = 20; // Larger window for form fields
+                
+                for (int wy = Math.max(0, y - windowSize); wy < Math.min(height, y + windowSize); wy++) {
+                    for (int wx = Math.max(0, x - windowSize); wx < Math.min(width, x + windowSize); wx++) {
+                        localSum += grayValues[wy][wx];
+                        localCount++;
+                    }
+                }
+                
+                int localAvg = localSum / localCount;
+                
+                // Enhanced contrast for form elements and text boxes
+                if (gray < localAvg - 20) {
+                    // Dark areas (text/form borders) - enhance significantly
+                    gray = Math.max(0, gray - 50);
+                } else if (gray > localAvg + 20) {
+                    // Light areas (background/form fields) - brighten
+                    gray = Math.min(255, gray + 40);
+                } else {
+                    // Apply stronger contrast enhancement for form elements
+                    gray = Math.min(255, Math.max(0, (int) (2.0 * (gray - 128) + 128)));
+                }
+                
+                // Multi-directional edge enhancement for better form field boundaries
+                if (x > 2 && x < width - 3 && y > 2 && y < height - 3) {
+                    int edgeStrength = 0;
+                    
+                    // Calculate edge strength in multiple directions for form detection
+                    edgeStrength += Math.abs(grayValues[y][x-2] - grayValues[y][x+2]); // Horizontal
+                    edgeStrength += Math.abs(grayValues[y-2][x] - grayValues[y+2][x]); // Vertical
+                    edgeStrength += Math.abs(grayValues[y-2][x-2] - grayValues[y+2][x+2]); // Diagonal
+                    edgeStrength += Math.abs(grayValues[y-2][x+2] - grayValues[y+2][x-2]); // Anti-diagonal
+                    
+                    if (edgeStrength > 80) {
+                        // Strong edge - likely form boundary or text
+                        if (gray < localAvg) {
+                            gray = Math.max(0, gray - 40); // Make dark edges much darker
+                        } else {
+                            gray = Math.min(255, gray + 40); // Make light edges lighter
+                        }
+                    }
+                }
+                
+                processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
+            }
+        }
+        
+        return processedImage;
+    }
+    
+    /**
+     * Generate enhanced text output with form fields and OCR results
+     */
+    private void generateEnhancedTextOutput(String baseFileName, String ocrText, Map<String, Object> formData) throws IOException {
+        Path textFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.txt");
+        
+        try (BufferedWriter writer = Files.newBufferedWriter(textFile, StandardCharsets.UTF_8)) {
+            writer.write("=== COMPREHENSIVE PDF EXTRACTION RESULTS ===\n");
+            writer.write("Generated: " + new java.util.Date() + "\n");
+            writer.write("Processing Mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)\n\n");
+            
+            // Form fields section
+            @SuppressWarnings("unchecked")
+            Map<String, String> formFields = (Map<String, String>) formData.get("formFields");
+            writer.write("=== FORM FIELDS EXTRACTED (PDFBox) ===\n");
+            if (formFields != null && !formFields.isEmpty()) {
+                for (Map.Entry<String, String> entry : formFields.entrySet()) {
+                    writer.write("Field: " + entry.getKey() + "\n");
+                    writer.write("Value: " + entry.getValue() + "\n");
+                    writer.write("---\n");
+                }
+            } else {
+                writer.write("No interactive form fields found.\n");
+            }
+            writer.write("\n");
+            
+            // PDFBox text extraction
+            String extractedText = (String) formData.get("extractedText");
+            writer.write("=== TEXT CONTENT EXTRACTED (PDFBox Text Stripper) ===\n");
+            if (extractedText != null && !extractedText.trim().isEmpty()) {
+                writer.write(extractedText);
+            } else {
+                writer.write("No text content extracted by PDFBox.\n");
+            }
+            writer.write("\n\n");
+            
+            // OCR results
+            writer.write("=== ENHANCED OCR RESULTS (Tesseract Multi-Pass) ===\n");
+            writer.write(ocrText);
+        }
+        
+        LOGGER.info("Enhanced text output saved to: " + textFile);
+    }
+    
+    /**
+     * Generate enhanced JSON output with all extraction data
+     */
+    private void generateEnhancedJsonOutput(String baseFileName, List<ExtractedWord> words, Map<String, Object> formData) throws IOException {
+        Path jsonFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.json");
+        
+        ObjectNode rootNode = objectMapper.createObjectNode();
+        rootNode.put("extractionTimestamp", System.currentTimeMillis());
+        rootNode.put("processingMode", PROCESSING_MODE.toString());
+        rootNode.put("processingDPI", PROCESSING_MODE.getDpi());
+        
+        // Form fields
+        @SuppressWarnings("unchecked")
+        Map<String, String> formFields = (Map<String, String>) formData.get("formFields");
+        ObjectNode formFieldsNode = objectMapper.createObjectNode();
+        if (formFields != null) {
+            for (Map.Entry<String, String> entry : formFields.entrySet()) {
+                formFieldsNode.put(entry.getKey(), entry.getValue());
+            }
+        }
+        rootNode.set("formFields", formFieldsNode);
+        
+        // PDFBox extracted text
+        String extractedText = (String) formData.get("extractedText");
+        rootNode.put("pdfBoxText", extractedText != null ? extractedText : "");
+        
+        // OCR results (if any words were extracted)
+        rootNode.put("totalWords", words.size());
+        ArrayNode wordsArray = objectMapper.createArrayNode();
+        
+        for (ExtractedWord word : words) {
+            ObjectNode wordNode = objectMapper.createObjectNode();
+            wordNode.put("text", word.getText());
+            wordNode.put("page", word.getPage());
+            wordNode.put("x", word.getX());
+            wordNode.put("y", word.getY());
+            wordNode.put("width", word.getWidth());
+            wordNode.put("height", word.getHeight());
+            wordNode.put("confidence", word.getConfidence());
+            
+            wordsArray.add(wordNode);
+        }
+        
+        rootNode.set("words", wordsArray);
+        
+        // Summary
+        ObjectNode summaryNode = objectMapper.createObjectNode();
+        summaryNode.put("formFieldsFound", formFields != null ? formFields.size() : 0);
+        summaryNode.put("wordsExtracted", words.size());
+        summaryNode.put("textLengthPDFBox", extractedText != null ? extractedText.length() : 0);
+        rootNode.set("summary", summaryNode);
+        
+        try (BufferedWriter writer = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(writer, rootNode);
+        }
+        
+        LOGGER.info("Enhanced JSON output saved to: " + jsonFile);
     }
     
     /**
