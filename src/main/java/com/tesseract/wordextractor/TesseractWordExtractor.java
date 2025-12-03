@@ -37,7 +37,7 @@ public class TesseractWordExtractor {
         public int getDpi() { return dpi; }
     }
     
-    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.BALANCED;
+    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.HIGH_QUALITY;
     
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;

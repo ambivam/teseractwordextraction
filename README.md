@@ -191,3 +191,22 @@ java -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"
 
 # For large PDFs, increase memory:
 java -Xmx4g -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"
+
+#*********************************
+# Skip clean, just package
+mvn package
+
+# Then run with high quality (600 DPI)
+java -Xmx4g -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"
+
+#*******************
+# 1. Kill Java processes
+taskkill /f /im java.exe
+
+# 2. Wait a moment
+timeout /t 2
+
+# 3. Try building again
+mvn clean package
+
+#*******************
