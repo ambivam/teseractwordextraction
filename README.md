@@ -210,3 +210,4 @@ timeout /t 2
 mvn clean package
 
 #*******************
+java -Xmx6g -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"

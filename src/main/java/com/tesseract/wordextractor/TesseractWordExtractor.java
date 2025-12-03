@@ -30,14 +30,15 @@ public class TesseractWordExtractor {
     public enum ProcessingMode {
         FAST(300),      // Fast processing, good accuracy
         BALANCED(400),  // Balanced speed and accuracy (default)
-        HIGH_QUALITY(600); // Maximum accuracy, slower processing
+        HIGH_QUALITY(600), // Maximum accuracy, slower processing
+        ULTRA_HIGH(800); // Ultra-high resolution for maximum form capture
         
         private final int dpi;
         ProcessingMode(int dpi) { this.dpi = dpi; }
         public int getDpi() { return dpi; }
     }
     
-    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.HIGH_QUALITY;
+    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH;
     
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;
@@ -91,17 +92,26 @@ public class TesseractWordExtractor {
             tesseract.setVariable("tessedit_char_whitelist", "");
             tesseract.setVariable("tessedit_char_blacklist", "");
             
-            // Enhanced configuration for high-resolution processing (stable settings)
-            tesseract.setVariable("textord_min_linesize", "2.0");
-            tesseract.setVariable("textord_noise_sizelimit", "0.7");
+            // Ultra-high resolution configuration for maximum form capture
+            tesseract.setVariable("textord_min_linesize", "0.1"); // Extremely low threshold for tiny text
+            tesseract.setVariable("textord_noise_sizelimit", "0.1"); // Detect even the smallest text elements
             tesseract.setVariable("classify_enable_learning", "0");
             tesseract.setVariable("classify_enable_adaptive_matcher", "0");
             tesseract.setVariable("wordrec_enable_assoc", "0");
             
-            // Better handling of forms and checkboxes
-            tesseract.setVariable("textord_tabfind_find_tables", "0"); // Disable table finding to avoid issues
+            // Maximum sensitivity for forms and tiny text in boxes
+            tesseract.setVariable("textord_tabfind_find_tables", "0");
             tesseract.setVariable("segment_penalty_dict_frequent_word", "0");
             tesseract.setVariable("allow_blob_division", "0");
+            tesseract.setVariable("textord_min_xheight", "1"); // Minimum possible height for tiny text
+            tesseract.setVariable("textord_noise_translimit", "0.5");
+            tesseract.setVariable("textord_noise_normratio", "1.0");
+            tesseract.setVariable("textord_heavy_nr", "1"); // Enable heavy noise reduction
+            tesseract.setVariable("textord_show_blobs", "0");
+            tesseract.setVariable("textord_blob_size_bigile", "95");
+            tesseract.setVariable("textord_noise_area_ratio", "0.7");
+            tesseract.setVariable("textord_initialx_ile", "0.75");
+            tesseract.setVariable("textord_initialy_ile", "0.75");
             
             LOGGER.info("Tesseract initialized successfully");
             LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
@@ -198,6 +208,66 @@ public class TesseractWordExtractor {
                 } catch (Exception e) {
                     LOGGER.warning("Pass 4 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
                 }
+                
+                // Pass 5: OCR with PSM 7 (single text line) optimized for dates and numbers
+                try {
+                    tesseract.setPageSegMode(7);
+                    tesseract.setVariable("tessedit_char_whitelist", "0123456789/.-");
+                    String pageText5 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 5 (Dates/Numbers Only) ===\n").append(pageText5).append("\n\n");
+                    tesseract.setVariable("tessedit_char_whitelist", ""); // Reset whitelist
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 5 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 6: OCR with PSM 10 (single character) for very small isolated text
+                try {
+                    tesseract.setPageSegMode(10);
+                    tesseract.setVariable("textord_min_linesize", "0.05");
+                    tesseract.setVariable("textord_min_xheight", "0.5");
+                    String pageText6 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 6 (Single Characters) ===\n").append(pageText6).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 6 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 7: OCR with PSM 11 (sparse text) for scattered form elements
+                try {
+                    tesseract.setPageSegMode(11);
+                    tesseract.setVariable("textord_noise_sizelimit", "0.05");
+                    String pageText7 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 7 (Sparse Text) ===\n").append(pageText7).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 7 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 8: OCR with PSM 12 (sparse text with OSD) for maximum coverage
+                try {
+                    tesseract.setPageSegMode(12);
+                    tesseract.setVariable("textord_heavy_nr", "0"); // Disable heavy noise reduction for this pass
+                    String pageText8 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 8 (Sparse + OSD) ===\n").append(pageText8).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 8 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 9: Ultra-sensitive pass with minimal filtering
+                try {
+                    tesseract.setPageSegMode(6);
+                    tesseract.setVariable("textord_min_linesize", "0.01");
+                    tesseract.setVariable("textord_noise_sizelimit", "0.01");
+                    tesseract.setVariable("textord_min_xheight", "0.1");
+                    String pageText9 = tesseract.doOCR(processedImage);
+                    pageTextBuilder.append("=== Pass 9 (Ultra-Sensitive) ===\n").append(pageText9).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 9 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Reset all variables to original ultra-high settings
+                tesseract.setVariable("textord_min_linesize", "0.1");
+                tesseract.setVariable("textord_noise_sizelimit", "0.1");
+                tesseract.setVariable("textord_min_xheight", "1");
+                tesseract.setVariable("textord_heavy_nr", "1");
                 
                 // Reset to default PSM
                 tesseract.setPageSegMode(3);
@@ -325,10 +395,10 @@ public class TesseractWordExtractor {
             for (int x = 0; x < width; x++) {
                 int gray = grayValues[y][x];
                 
-                // Calculate local threshold for better checkbox detection
+                // Calculate local threshold with smaller window for ultra-high resolution
                 int localSum = 0;
                 int localCount = 0;
-                int windowSize = 15;
+                int windowSize = 8; // Smaller window for 800 DPI processing
                 
                 for (int wy = Math.max(0, y - windowSize); wy < Math.min(height, y + windowSize); wy++) {
                     for (int wx = Math.max(0, x - windowSize); wx < Math.min(width, x + windowSize); wx++) {
@@ -339,16 +409,16 @@ public class TesseractWordExtractor {
                 
                 int localAvg = localSum / localCount;
                 
-                // Enhanced adaptive contrast for forms and checkboxes
-                if (gray < localAvg - 15) {
-                    // Dark areas (text/checkboxes) - make much darker for better recognition
-                    gray = Math.max(0, gray - 40);
-                } else if (gray > localAvg + 15) {
-                    // Light areas (background) - make lighter
-                    gray = Math.min(255, gray + 30);
+                // Ultra-aggressive contrast for maximum form field capture at 800 DPI
+                if (gray < localAvg - 25) {
+                    // Ultra-dark areas (tiny text in forms) - make completely black
+                    gray = Math.max(0, gray - 80);
+                } else if (gray > localAvg + 25) {
+                    // Light areas (background) - make completely white
+                    gray = Math.min(255, gray + 60);
                 } else {
-                    // Apply stronger contrast enhancement for form elements
-                    gray = Math.min(255, Math.max(0, (int) (1.5 * (gray - 128) + 128)));
+                    // Apply maximum contrast enhancement for ultra-small text visibility
+                    gray = Math.min(255, Math.max(0, (int) (2.5 * (gray - 128) + 128)));
                 }
                 
                 // Edge enhancement for better character definition
