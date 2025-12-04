@@ -525,8 +525,8 @@ public class TesseractWordExtractor {
             writer.write("=== FORM FIELDS EXTRACTED (PDFBox) ===\n");
             if (formFields != null && !formFields.isEmpty()) {
                 for (Map.Entry<String, String> entry : formFields.entrySet()) {
-                    writer.write("Field: " + entry.getKey() + "\n");
-                    writer.write("Value: " + entry.getValue() + "\n");
+                    writer.write("Field:\t" + entry.getKey() + "\n");
+                    writer.write("Value:\t" + entry.getValue() + "\n");
                     writer.write("---\n");
                 }
             } else {
@@ -538,7 +538,8 @@ public class TesseractWordExtractor {
             String extractedText = (String) formData.get("extractedText");
             writer.write("=== TEXT CONTENT EXTRACTED (PDFBox Text Stripper) ===\n");
             if (extractedText != null && !extractedText.trim().isEmpty()) {
-                writer.write(extractedText);
+                String formattedText = formatTextWithTabs(extractedText);
+                writer.write(formattedText);
             } else {
                 writer.write("No text content extracted by PDFBox.\n");
             }
@@ -546,10 +547,217 @@ public class TesseractWordExtractor {
             
             // OCR results
             writer.write("=== ENHANCED OCR RESULTS (Tesseract Multi-Pass) ===\n");
-            writer.write(ocrText);
+            String formattedOcrText = formatTextWithTabs(ocrText);
+            writer.write(formattedOcrText);
         }
         
         LOGGER.info("Enhanced text output saved to: " + textFile);
+    }
+    
+    /**
+     * Format text to use tabs after field labels instead of spaces
+     * Ensures field labels like "Número de Cliente" use spaces within the label but tabs after the colon
+     */
+    private String formatTextWithTabs(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return text;
+        }
+        
+        // Split text into lines for processing
+        String[] lines = text.split("\n");
+        StringBuilder formattedText = new StringBuilder();
+        
+        for (String line : lines) {
+            String formattedLine = formatLineWithTabs(line);
+            formattedText.append(formattedLine).append("\n");
+        }
+        
+        return formattedText.toString();
+    }
+    
+    /**
+     * Format a single line to use tabs after field labels
+     */
+    private String formatLineWithTabs(String line) {
+        if (line == null || line.trim().isEmpty()) {
+            return line;
+        }
+        
+        // Comprehensive list of field patterns from the PDF form
+        String[] fieldPatterns = {
+            "Número de Cliente",
+            "RFC con Homoclave", 
+            "Actividad",
+            "Razón Social",
+            "Firma Electrónica Avanzada",
+            "Tipo de Empresa",
+            "Actividad Tributaria",
+            "Fecha de Constitución",
+            "Estado de Constitución",
+            "País de Constitución",
+            "No\\. Acta Constitutiva",
+            "Sucursal",
+            "Cobertura",
+            "Sector",
+            "Correo Electrónico",
+            "Avenida / Calle",
+            "Número Exterior",
+            "Número Interior",
+            "Colonia / Población",
+            "Ciudad / Municipio / Alcaldía",
+            "Télefono",
+            "Extensión",
+            "Código Postal",
+            "Estado",
+            "País",
+            "Nombre del Representante Legal",
+            "RFC Representante Legal",
+            "Declara impuestos EEUU",
+            "Número ID Tributaria \\(TAX ID\\)",
+            "Exento Ley FATCA",
+            "Código Exención FATCA",
+            "Institución Financiera",
+            "Declara Impuestos en otro País",
+            "Propietario / Accionista / Dueño 25% o más",
+            "Tenencia Accionaria",
+            "Nombre del Participante",
+            "Tipo de Parte Asociada",
+            "% Participación",
+            "Monto Participación",
+            "Participación",
+            "Producto / Servicio",
+            "No\\. Cuenta",
+            "Número CLABE Interbancaria",
+            "Moneda",
+            "Número de RECA",
+            "Versión de Actualización",
+            "Fecha de Inscripción RECA",
+            "Fecha de Actualización RECA",
+            "Frecuencia Estado de Cuenta",
+            "Canal de Entrega Estado de Cuenta",
+            "Propósito de la Cuenta",
+            "Origen Depósito Inicial",
+            "Tercer Proveedor de Recursos",
+            "Origen Fondos Habituales",
+            "¿Protección de Cheques\\?",
+            "No\\. Contrato",
+            "Cuenta para Cobro de Comisiones",
+            "Usuarios Máximos",
+            "Grupos Máximos",
+            "Líneas Máximas",
+            "Roles Máximos",
+            "Servicios Transaccionales",
+            "CreCIMIENTO PyME",
+            "Fecha Inscripción al RECA",
+            "No\\. RECA Servicios",
+            "No\\. RECA CreCIMIENTO PyME",
+            "Servicios Transaccionales CIMA",
+            "CreCIMIENTO PyME CIMA",
+            "Nombre",
+            "Apellidos", 
+            "Dirección",
+            "Teléfono",
+            "Email",
+            "Fecha",
+            "DNI",
+            "NIF",
+            "Código",
+            "Referencia",
+            "Importe",
+            "Total",
+            "Subtotal",
+            "IVA",
+            "Descripción",
+            "Observaciones",
+            "Comentarios"
+        };
+        
+        String processedLine = line;
+        
+        // Handle specific multi-field header lines first
+        processedLine = handleMultiFieldHeaders(processedLine);
+        
+        // First, normalize internal spacing in field names (ensure single spaces within field names)
+        // This handles cases where field names have multiple spaces between words
+        processedLine = processedLine.replaceAll("([A-Za-zÀ-ÿ/()\\-\\.]+)\\s{2,}([A-Za-zÀ-ÿ/()\\-\\.]+)", "$1 $2");
+        
+        // Process each field pattern
+        for (String pattern : fieldPatterns) {
+            // Pattern 1: "Field Name:" followed by spaces and then value
+            // Replace with: "Field Name:" followed by tab and then value
+            String regexPattern = "(" + pattern.replace(" ", "\\s+") + ")\\s*:\\s+";
+            processedLine = processedLine.replaceAll(regexPattern, "$1:\t");
+            
+            // Pattern 2: Field name followed by multiple spaces (no colon) and then value
+            // This handles cases like "Número de Cliente    301352621"
+            String regexPatternNoColon = "(" + pattern.replace(" ", "\\s+") + ")\\s{2,}([A-Za-z0-9])";
+            processedLine = processedLine.replaceAll(regexPatternNoColon, "$1\t$2");
+        }
+        
+        // Generic pattern for any text followed by colon and spaces
+        // This catches other field patterns we might have missed
+        processedLine = processedLine.replaceAll("([A-Za-zÀ-ÿ\\s/()\\-\\.]+):\\s{2,}", "$1:\t");
+        
+        // Handle specific multi-field lines like "RFC con Homoclave Número de Cliente Actividad"
+        // followed by values "TJT620428BX8 301352621 INDUSTRIA DE METALES NO FERROSOS"
+        if (processedLine.matches(".*\\b[A-Z0-9]{12,}\\s+\\d{9}\\s+[A-Z\\s]+.*")) {
+            // This looks like a data line with RFC, Client Number, and Activity
+            // Split and format with tabs
+            String[] parts = processedLine.trim().split("\\s+", 3);
+            if (parts.length >= 3) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2];
+            }
+        }
+        
+        return processedLine;
+    }
+    
+    /**
+     * Handle multi-field header lines by inserting tabs between field labels
+     */
+    private String handleMultiFieldHeaders(String line) {
+        // Define specific multi-field header patterns that need tab separation
+        String[][] multiFieldPatterns = {
+            // Pattern: original line -> formatted line with tabs
+            {"RFC con Homoclave Número de Cliente Actividad", "RFC con Homoclave\tNúmero de Cliente\tActividad"},
+            {"Firma Electrónica Avanzada Tipo de Empresa Actividad Tributaria", "Firma Electrónica Avanzada\tTipo de Empresa\tActividad Tributaria"},
+            {"Fecha de Constitución Estado de Constitución País de Constitución No\\. Acta Constitutiva", "Fecha de Constitución\tEstado de Constitución\tPaís de Constitución\tNo. Acta Constitutiva"},
+            {"Sucursal Cobertura Sector", "Sucursal\tCobertura\tSector"},
+            {"Avenida / Calle Número Exterior Número Interior", "Avenida / Calle\tNúmero Exterior\tNúmero Interior"},
+            {"Colonia / Población Ciudad / Municipio / Alcaldía Télefono Extensión", "Colonia / Población\tCiudad / Municipio / Alcaldía\tTélefono\tExtensión"},
+            {"Código Postal Estado País", "Código Postal\tEstado\tPaís"},
+            {"Nombre del Representante Legal RFC Representante Legal", "Nombre del Representante Legal\tRFC Representante Legal"},
+            {"Declara impuestos EEUU Número ID Tributaria \\(TAX ID\\)", "Declara impuestos EEUU\tNúmero ID Tributaria (TAX ID)"},
+            {"Exento Ley FATCA Código Exención FATCA", "Exento Ley FATCA\tCódigo Exención FATCA"},
+            {"Institución Financiera Declara Impuestos en otro País", "Institución Financiera\tDeclara Impuestos en otro País"},
+            {"Propietario / Accionista / Dueño 25% o más Tenencia Accionaria", "Propietario / Accionista / Dueño 25% o más\tTenencia Accionaria"},
+            {"Nombre del Participante Tipo de Parte Asociada % Participación Monto Participación Participación", "Nombre del Participante\tTipo de Parte Asociada\t% Participación\tMonto Participación\tParticipación"},
+            {"Producto / Servicio No\\. Cuenta Número CLABE Interbancaria Moneda", "Producto / Servicio\tNo. Cuenta\tNúmero CLABE Interbancaria\tMoneda"},
+            {"Número de RECA Versión de Actualización Fecha de Inscripción RECA Fecha de Actualización RECA", "Número de RECA\tVersión de Actualización\tFecha de Inscripción RECA\tFecha de Actualización RECA"},
+            {"Frecuencia Estado de Cuenta Canal de Entrega Estado de Cuenta", "Frecuencia Estado de Cuenta\tCanal de Entrega Estado de Cuenta"},
+            {"Propósito de la Cuenta Origen Depósito Inicial Tercer Proveedor de Recursos", "Propósito de la Cuenta\tOrigen Depósito Inicial\tTercer Proveedor de Recursos"},
+            {"Origen Fondos Habituales ¿Protección de Cheques\\?", "Origen Fondos Habituales\t¿Protección de Cheques?"},
+            {"No\\. Contrato Cuenta para Cobro de Comisiones", "No. Contrato\tCuenta para Cobro de Comisiones"},
+            {"Usuarios Máximos Grupos Máximos Líneas Máximas Roles Máximos", "Usuarios Máximos\tGrupos Máximos\tLíneas Máximas\tRoles Máximos"},
+            {"No\\. RECA Servicios Fecha Inscripción al RECA No\\. RECA CreCIMIENTO PyME Fecha Inscripción al RECA", "No. RECA Servicios\tFecha Inscripción al RECA\tNo. RECA CreCIMIENTO PyME\tFecha Inscripción al RECA"},
+            {"Transaccionales Servicios Transaccionales CIMA CreCIMIENTO PyME CIMA", "Transaccionales\tServicios Transaccionales CIMA\tCreCIMIENTO PyME CIMA"}
+        };
+        
+        String processedLine = line;
+        
+        // Apply each multi-field pattern
+        for (String[] pattern : multiFieldPatterns) {
+            String originalPattern = pattern[0];
+            String formattedPattern = pattern[1];
+            
+            // Use regex to match the pattern (allowing for flexible spacing)
+            String regexPattern = originalPattern.replace(" ", "\\s+");
+            if (processedLine.matches(".*" + regexPattern + ".*")) {
+                processedLine = processedLine.replaceAll(regexPattern, formattedPattern);
+            }
+        }
+        
+        return processedLine;
     }
     
     /**
