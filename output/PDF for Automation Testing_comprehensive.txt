@@ -1,20 +1,20 @@
 === COMPREHENSIVE PDF EXTRACTION RESULTS ===
-Generated: Thu Dec 04 13:16:10 IST 2025
+Generated: Thu Dec 04 14:55:20 IST 2025
 Processing Mode: HIGH_QUALITY (600 DPI)
 
 === FORM FIELDS EXTRACTED (PDFBox) ===
 No interactive form fields found.
 
 === TEXT CONTENT EXTRACTED (PDFBox Text Stripper) ===
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
-I.	DATOS	GENERALES	DE	LA	EMPRESA
+I. DATOS GENERALES DE LA EMPRESA
 Razón Social
-TAMALES	JESECA	HACES
+	TAMALES JESECA HACES
 RFC con Homoclave	Número de Cliente	Actividad
 TJT620428BX8	301352621	INDUSTRIA DE METALES NO FERROSOS
 Firma Electrónica Avanzada	Tipo de Empresa	Actividad Tributaria
-00001000000503168916	PRIVADA	REGIMEN	SIMPLIFICADO	DE	CONFIANZA
+00001000000503168916 PRIVADA	REGIMEN	SIMPLIFICADO	DE	CONFIANZA
 Fecha de Constitución	Estado de Constitución	País de Constitución	No. Acta Constitutiva
 28/04/1962	CIUDAD DE MEXICO	MEXICO	13625
 Sucursal	Cobertura	Sector
@@ -24,37 +24,37 @@ TAMALES_JESECA_@SBISI.COM
 Avenida / Calle	Número Exterior	Número Interior
 CALLE	KILOMETRO	255	1030	34	2
 Colonia / Población	Ciudad / Municipio / Alcaldía	Télefono	Extensión
-BOSQUES	DE	SAN	MATEO	TOLUCA	5582331936	0
+BOSQUES DE SAN MATEO TOLUCA	5582331936	0
 Código Postal	Estado	País
 50100	MEXICO	MEXICO
 Nombre del Representante Legal	RFC Representante Legal
-PAMELA LEYVA RAMIREZ LERP591120XRC
+	PAMELA LEYVA RAMIREZ LERP591120XRC
 Autorizo a Scotiabank Inverlat, S.A., Institución de Banca Múltiple, Grupo Financiero Scotiabank Inverlat, para que realice prospección
 comercial y me envíe información y promociones sobre productos y servicios: Si
-II.	AUTOCERTIFICACIÓN	DE	RESIDENCIA	FISCAL
+II. AUTOCERTIFICACIÓN DE RESIDENCIA FISCAL
 Declara impuestos EEUU	Número ID Tributaria (TAX ID)
-No N/A
+No	N/A
 Exento Ley FATCA	Código Exención FATCA
-No N/A
+No	N/A
 Institución Financiera	Declara Impuestos en otro País
-NO No
+NO	No
 III. PARTES ASOCIADAS
 Propietario / Accionista / Dueño 25% o más	Tenencia Accionaria
 Nombre del Participante	Tipo de Parte Asociada	% Participación	Monto Participación	Participación
 PAMELA LEYVA RAMIREZ	Socio Accionista PF	100	$200,000.00	Directo
 IV. PRODUCTOS
 Producto / Servicio	No. Cuenta	Número CLABE Interbancaria	Moneda
-2406 - CUENTA UNICA CIMA (PM) N/A N/A	MXN
+2406 - CUENTA UNICA CIMA (PM) N/A	N/A	MXN
 Número de RECA	Versión de Actualización	Fecha de Inscripción RECA	Fecha de Actualización RECA
 0319-999-038191/03-02918-1024	PMORALES-303	24/10/2024	25/11/2024
 Frecuencia Estado de Cuenta	Canal de Entrega Estado de Cuenta
-Mensual Banca Electrónica
+Mensual	Banca Electrónica
 Propósito de la Cuenta	Origen Depósito Inicial	Tercer Proveedor de Recursos
-Pago a Proveedores Otros No
+Pago a Proveedores	Otros	No
 Origen Fondos Habituales	¿Protección de Cheques?
-Recursos de la empresa por venta de productos Si
+Recursos de la empresa por venta de productos	Si
 Confidencial. Uso exclusivo interno de Scotiabank México Página 1 de 6
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
 V. SERVICIOS
 No. RECA Servicios	Fecha Inscripción al RECA	No. RECA CreCIMIENTO PyME	Fecha Inscripción al RECA
@@ -67,7 +67,7 @@ Usuarios Máximos	Grupos Máximos	Líneas Máximas	Roles Máximos
 2	10	100	10
 X Reutilizar X Automático X Captura X Avisos
 Servicios Disponibles
-CONSULTAS	PAGOS	CHEQUES	ADMINISTRACIÓN
+	CONSULTAS PAGOS CHEQUES	ADMINISTRACIÓN
 Pagos en Ventanilla *	X Pagos Referenciados IMSS	X Solicitud de Chequeras	X Asignación de Cuentas - Usuarios
 X Saldos General	X Traspasos Mismo Banco	X Suspensión Cheques	X Autorizaciones Doble Firma **
 X Saldos por Producto	X Traspasos Otros Bancos	X Protección de Cuentas	X Preferencias Solicitante
@@ -98,7 +98,7 @@ Administrador del Sistema (Usuario 001)
 ID de Rol	Rol	Idioma	Moneda
 001	Super Usuario	Español Peso Mexicano	
 Nombre
-Juan Pérez Robles
+	Juan Pérez Robles
 Teléfono	Extensión	Usuario Automático	Tipo de Usuario
 5523457890	N/A	X	Administrador de Sistema
 Dirección de correo electrónico para recibir notificaciones
@@ -114,13 +114,13 @@ Usuario Autorizado B:
 * Usuario registrado en el sistema de Scotia en Línea y su número de usuario actual es el número de servicio SEL + Número de Usuario
 * Es el usuario cuya información se detalla a continuación:
 Confidencial. Uso exclusivo interno de Scotiabank México Página 2 de 6
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
 Administrador del Sistema
 ID de Rol	Rol	Idioma	Moneda
 001	Super Usuario	Español Peso Mexicano	
 Nombre
-Lidia Martínez González
+	Lidia Martínez González
 Teléfono	Extensión	Usuario Automático	Tipo de Usuario
 5598763457	1234	X	Administrador
 Dirección de correo electrónico para recibir notificaciones
@@ -131,23 +131,23 @@ Relación de Cuentas Scotiabank Propias de la Empresa
 Número de Contrato	Estado	Tipo de Cuenta	Número Cuenta
 301352621	Alta	Cheques	N/A
 Nombre del Titular de la Cuenta	Moneda
-TAMALES	JESECA	HACES	MXN
+	TAMALES JESECA HACES MXN
 Cargo	Abono	Consulta	Opciones
 Individual	Si	Si	N/A
 Protección de Cheques - Anexo 2 del Contrato de Servicios Transaccionales - Envío de Archivos
 Envío y Recepción de Archivos Vía Transferencia de Archivos de Banca por Internet
 Scotia Cobranza con Recibo
-Nueva Alta Recepción del Banco
-X X
+Nueva Alta	Recepción del Banco
+X	X
 Scotia Pagos
 Nueva Alta	Envío al Banco	Recepción del Banco
-X	X	X
+	X	X X
 Estado de Cuenta Electrónico
 Tipo de Formato Layout	Número de Cuenta	Moneda	Recepción del Banco
 Cheques 8 Posiciones	MXN	X
 Protección de Cheques
 Número de Cuenta	Moneda	Envío al Banco	Recepción del Banco
-MXN	X	X
+	MXN X	X
 La contratación o cancelación del servicio Scotia Nómina se efectúa conforme a lo que señala el Contrato de Prestación del Servicio Scotia Nómina,
 mediante este anexo únicamente se realiza el alta, modificación o baja del envío y recepción de archivos vía Transferencia de Archivos de Banca por
 Internet.
@@ -165,7 +165,7 @@ No. Contrato	Tipo de Formato a Utilizar	Moneda	Acepta Pagos Duplicados
 Los días a los que se refieren los sub anexos siguientes serán días naturales, salvo que otra cosa se establezca específicamente en los mismos, y en todo
 caso serán aplicados tal y como se ha señalado en las cláusulas anteriores del presente documento
 Confidencial. Uso exclusivo interno de Scotiabank México Página 3 de 6
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
 II. Características de Operación
 Título que se mostrará en el Comprobante de Pago	Medios por los que se recibirán los Pagos
@@ -217,7 +217,7 @@ Scotia en Línea Número de Servicio	Host to Host Número de Servicio (Sólo sí
 301352621	N/A
 Requiere la validación de secuencia en sus archivos enviados al banco (Entrada): No
 Confidencial. Uso exclusivo interno de Scotiabank México Página 4 de 6
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
 Los horarios de Recepción y Proceso de Archivo(s) de Pre registro de Cuentas y Archivo(s) de Dispersión de Fondos se operan cada 15 minutos a partir de
 las 07:00 y antes de las 20:00 horas de la CDMX de lunes a domingo. A excepción de los Archivo(s) de Dispersión de Fondos recibidos de las 17:46 a las
@@ -250,7 +250,7 @@ Paquete Reporte Archivo) Movimientos Paquete
 Cuenta	Moneda
 N/A	MXN
 El Banco enviará al Cliente los Estados de Cuenta Electrónicos a partir de las 7:00 horas de la CDMX del día hábil bancario siguiente al de la operación.
-VI.	ACEPTACIÓN	DE	CONDICIONES	Y	DECLARACIONES
+	VI. ACEPTACIÓN DE CONDICIONES Y	DECLARACIONES
 Por Solicitante/CLIENTE se entiende a la persona Moral que suscribe la presente Solicitud.
 Por Banco se entiende a Scotiabank Inverlat S.A. Institución de Banca Múltiple Grupo Financiero Scotiabank Inverlat.
 Al firmar la presente Solicitud, el Solicitante manifiesta bajo protesta de decir verdad que:
@@ -268,7 +268,7 @@ Banco.
 vii. El (los) representante(s) legal(es) que firma(n) la presente Solicitud cuenta(n) con la (s) facultad(es) suficiente(s) para suscribirla y declara(n) que
 dicha(s) facultad(es) no le(s) ha(n) sido revocada(s), modificada(s) ni restringida(s) de forma alguna.
 Confidencial. Uso exclusivo interno de Scotiabank México Página 5 de 6
-SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA)
+	SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 PERSONA MORAL
 viii. Está de acuerdo en que la(s) persona(s) designada(s) como Contacto(s) Autorizado(s) podrá(n) solicitar en cualquier momento y por el medio
 electrónico que el Solicitante haya señalado, información de las cuentas que haya indicado y tales designaciones permanecerán vigentes hasta el
@@ -291,8 +291,8 @@ letra "I' en el apartado de Productos y Servicios de la presente Solicitud.
 Autorizo al BANCO para que mis datos personales sean compartidos con las Entidades del Grupo Financiero Scotiabank Inverlat y/o The Bank of Nova
 Scotia, a efecto de que realicen prospección comercial y me ofrezcan productos y servicios adicionales a los Productos y/o Servicios que estoy solicitando,
 y sé que cuento con el derecho innegable de contratar cualesquiera de ellos a través de un tercero independiente. Si
-Representante Legal Firma Nombre
-PAMELA	LEYVA	RAMIREZ
+Representante Legal Firma	Nombre
+	PAMELA LEYVA RAMIREZ
 El CLIENTE autoriza al BANCO y/o a cualquiera de las Entidades que forman o lleguen a formar parte del Grupo Financiero al que pertenece, para que
 soliciten información sobre su comportamiento e historial crediticio a cualquier Sociedad de Información Crediticia autorizada y a compartir y proporcionarse
 entre ellas la información y/o documentación que sobre su historial crediticio obtengan, en el entendido que en este acto manifiesta tener pleno
@@ -303,8 +303,8 @@ de las Entidades que forman o lleguen a formar parte del Grupo Financiero al que
 fecha en que se emite. Asimismo, el CLIENTE autoriza al BANCO y/o a cualquiera de las Entidades que forman o lleguen a formar parte del Grupo
 Financiero al que pertenece a conservar y aprovechar para los fines propios de su objeto, la presente Solicitud y/o la información que en la misma se
 contiene.
-Representante Legal Firma Nombre
-PAMELA	LEYVA	RAMIREZ
+Representante Legal Firma	Nombre
+	PAMELA LEYVA RAMIREZ
 El Solicitante/CLIENTE manifiesta que el BANCO le ha Informado los términos y condiciones de la línea de crédito que se encuentra prevista en la cláusula
 denominada “Línea de Crédito Complementaria”, de su Contrato a través del cual contrato el mismo. En virtud de lo anterior, el Solicitante/CLIENTE está de
 acuerdo y acepta que el BANCO le otorgue una línea de crédito por un porcentaje y/o tope máximo, sobre el monto total de las inversiones a plazo que el
@@ -313,26 +313,26 @@ vinculadas a su cuenta con disposición a la vista y, en consecuencia, estará o
 uso de la línea de crédito, en los términos, plazos y condiciones financieras señalados en Contrato.
 El Solicitante/CLIENTE manifiesta su consentimiento en que para el producto Scotia Inversión Disponible, acepta mantener una cuenta con dispersión a la
 vista y al servicio de Banca por Internet para poder efectuar movimientos y disposiciones.
-Representante Legal Firma Nombre
-PAMELA	LEYVA	RAMIREZ
+Representante Legal Firma	Nombre
+	PAMELA LEYVA RAMIREZ
 Es del conocimiento del Solicitante/CLIENTE que el Banco podrá compartir su información con cualesquiera de las Entidades que forman o lleguen a
 formar parte del Grupo Financiero al que pertenece a efecto de que le ofrezcan otro tipo de productos y servicios adicionales a los Productos y/o Servicios
 que están solicitando y saben que cuenta con el derecho innegable de contratar cualesquiera de ellos a través de un tercero independiente.
-Representante Legal Firma Nombre
-PAMELA	LEYVA	RAMIREZ
-USO	EXCLUSIVO	DEL	BANCO:
+Representante Legal Firma	Nombre
+	PAMELA LEYVA RAMIREZ
+USO EXCLUSIVO DEL BANCO:
 Lugar de Contratación: Fecha de Contratación:
-CIUDAD	DE	MEXICO	28/10/2025
+	CIUDAD DE MEXICO 28/10/2025
 Nombre del Funcionario: Puesto: Número de Firma:
 Confidencial. Uso exclusivo interno de Scotiabank México Página 6 de 6
 
 
 === ENHANCED OCR RESULTS (Tesseract Multi-Pass) ===
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
-I.	DATOS	GENERALES	DE	LA	EMPRESA
+I. DATOS GENERALES DE LA EMPRESA
 
 RFC con Homoclave	Número de Cliente	Actividad
 
@@ -349,7 +349,7 @@ Código Postal	Estado	País
 
 Nombre del Representante Legal	RFC Representante Legal
 
-II.	AUTOCERTIFICACIÓN	DE	RESIDENCIA	FISCAL
+II. AUTOCERTIFICACIÓN DE RESIDENCIA FISCAL
 
 Declara impuestos EEUU Número ID Tributaria (TAX ID
 
@@ -373,10 +373,10 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 1 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 o PERSONA MORAL
 
-I.	DATOS	GENERALES	DE	LA	EMPRESA
+I. DATOS GENERALES DE LA EMPRESA
 
 Razón Social
 
@@ -404,7 +404,7 @@ Autorizo a Scotiabank Inverlat, S.A., Institución de Banca Múltiple, Grupo Fin
 
 comercial y me envíe información y promociones sobre productos y servicios:
 
-II.	AUTOCERTIFICACIÓN	DE	RESIDENCIA	FISCAL
+II. AUTOCERTIFICACIÓN DE RESIDENCIA FISCAL
 
 Declara impuestos EEUU Número ID Tributaria (TAX ID
 
@@ -448,8 +448,8 @@ xx
 
 
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
 V. SERVICIOS
 
@@ -463,7 +463,7 @@ No. Contrato	Cuenta para Cobro de Comisiones
 Usuarios Máximos	Grupos Máximos	Líneas Máximas	Roles Máximos
  Reutilizar Automático Captura Avisos
 Servicios Disponibles
-CONSULTAS	PAGOS	CHEQUES	ADMINISTRACIÓN
+	CONSULTAS PAGOS CHEQUES	ADMINISTRACIÓN
 | Pagos en Ventanilla *                    |X Pagos Referenciados IMSS bs olicitud de Chequeras Asignación de Cuentas - Usuarios
   aldos General raspasos Mismo Banco bs uspensión Cheques Autorizaciones Doble Firma **
 
@@ -561,7 +561,7 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 2 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
                                                           PERSONA MORAL
 V. SERVICIOS
 No. RECA Servicios Fecha Inscripcion al RECA No. RECA CreCIMIENTO PyME Fecha Inscripción al RECA
@@ -571,7 +571,7 @@ No. Contrato	Cuenta para Cobro de Comisiones
 Usuarios Maximos Grupos Maximos Lineas Maximas Roles Maximos
  Reutilizar Automatico Captura Avisos
 Servicios Disponibles
-CONSULTAS	PAGOS	CHEQUES	ADMINISTRACION
+	CONSULTAS PAGOS                                     CHEQUES ADMINISTRACION
 Pagos en Ventanilla *                    LX Pagos Referenciados IMSS bs olicitud de Chequeras Asignación de Cuentas - Usuarios
   aldos General raspasos Mismo Banco bs uspensión Cheques Autorizaciones Doble Firma **
   aldos por Producto raspasos Otros Bancos Protección de Cuentas Preferencias Solicitante
@@ -624,14 +624,14 @@ E
 x
 x x x x
 X
-X X
-X X
+X	X
+X	X
 X
-X	X	X
+	X	X X
 X
-X X
-X X
-X X
+X	X
+X	X
+X	X
 X
 X
 x
@@ -643,8 +643,8 @@ xx
 
 
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
 Administrador del Sistema
 
@@ -668,7 +668,7 @@ Protección de Cheques - Anexo 2 del Contrato de Servicios Transaccionales - Env
 Envío y Recepción de Archivos Vía Transferencia de Archivos de Banca por Internet
 
 EJ... Cobranza con Recibo
-Nueva Alta Recepción del Banco
+Nueva Alta	Recepción del Banco
 Scotia Pagos
 Nueva Alta Envio al Banco Recepción del Banco
 
@@ -707,7 +707,7 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 3 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-S ti   o k            SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	S ti o k SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 COTIGDANK:	PERSONA MORAL
 Administrador del Sistema
 ID de Rol	Rol	Idioma	Moneda
@@ -725,7 +725,7 @@ Cargo	Abono	Consulta	Opciones
 Protección de Cheques - Anexo 2 del Contrato de Servicios Transaccionales - Envío de Archivos
 Envío y Recepción de Archivos Vía Transferencia de Archivos de Banca por Internet
 EJ... Cobranza con Recibo
-Nueva Alta Recepción del Banco
+Nueva Alta	Recepción del Banco
 Scotia Pagos
 Nueva Alta Envio al Banco Recepción del Banco
 Estado de Cuenta Electrónico
@@ -767,8 +767,8 @@ xx
 
 
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
 eee de Operación
 lo que se mostrara en el Comprobante de Pago Medios por los que se recibiran los Pagos
@@ -840,7 +840,7 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 4 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-S ti   o k            SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	S ti o k SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 COTIGDANK:	PERSONA MORAL
 eee de Operación
 lo que se mostrara en el Comprobante de Pago Medios por los que se recibiran los Pagos
@@ -896,8 +896,8 @@ xx
 
 
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
 Los horarios de Recepción y Proceso de Archivo(s) de Pre registro de Cuentas y Archivo(s) de Dispersión de Fondos se operan cada 15 minutos a partir de
 las 07:00 y antes de las 20:00 horas de la CDMX de lunes a domingo. A excepción de los Archivo(s) de Dispersión de Fondos recibidos de las 17:46 a las
@@ -945,7 +945,7 @@ Cuenta	Moneda
 
 - El Banco enviará al Cliente los Estados de Cuenta Electrónicos a partir de las 7:00 horas de la CDMX del día hábil bancario siguiente al de la operación.
 
-VI.	ACEPTACIÓN	DE	CONDICIONES	Y	DECLARACIONES
+	VI. ACEPTACIÓN DE CONDICIONES Y	DECLARACIONES
 
 Por Solicitante/CLIENTE se entiende a la persona Moral que suscribe la presente Solicitud.
 
@@ -977,7 +977,7 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 5 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-e SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	e SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
 Scotiabank. PERSONA MORAL
 Los horarios de Recepción y Proceso de Archivo(s) de Pre registro de Cuentas y Archivo(s) de Dispersión de Fondos se operan cada 15 minutos a partir de
 las 07:00 y antes de las 20:00 horas de la CDMX de lunes a domingo. A excepción de los Archivo(s) de Dispersión de Fondos recibidos de las 17:46 a las
@@ -1017,7 +1017,7 @@ Paquete Reporte                      Archivo Movimientos                        
 Cuenta	Moneda
 
 - El Banco enviará al Cliente los Estados de Cuenta Electrónicos a partir de las 7:00 horas de la CDMX del día hábil bancario siguiente al de la operación.
-VI.	ACEPTACIÓN	DE	CONDICIONES	Y	DECLARACIONES
+	VI. ACEPTACIÓN DE CONDICIONES Y	DECLARACIONES
 
 Por Solicitante/CLIENTE se entiende a la persona Moral que suscribe la presente Solicitud.
 
@@ -1068,8 +1068,8 @@ xx
 
 
 === OCR Pass 1 (Auto Detection) ===
-.	SOLICITUD/CONTRATO	DE	PRODUCTOS	Y	SERVICIOS	EMPRESARIALES	(BASA
-Scotiabank. PERSONA MORAL OR
+	. SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA
+	Scotiabank. PERSONA MORAL OR
 
 viii. Está de acuerdo en que la(s) persona(s) designada(s) como Contacto(s) Autorizado(s) podrá(n) solicitar en cualquier momento y por el medio
 electrónico que el Solicitante haya señalado, información de las cuentas que haya indicado y tales designaciones permanecerán vigentes hasta el
@@ -1100,7 +1100,7 @@ Autorizo al BANCO para que mis datos personales sean compartidos con las Entidad
 Scotia, a efecto de que realicen prospección comercial y me ofrezcan productos y servicios adicionales a los Productos y/o Servicios que estoy solicitando,
 y sé que cuento con el derecho innegable de contratar cualesquiera de ellos a través de un tercero independiente.
 
-Representante Legal Firma Nombre
+Representante Legal Firma	Nombre
 
 | RepresentanteLegalFirma | Nombre
 AL
@@ -1116,7 +1116,7 @@ fecha en que se emite. Asimismo, el CLIENTE autoriza al BANCO y/o a cualquiera d
 Financiero al que pertenece a conservar y aprovechar para los fines propios de su objeto, la presente Solicitud y/o la información que en la misma se
 contiene.
 
-Representante Legal Firma Nombre
+Representante Legal Firma	Nombre
 
 | RepresentanteLegalFirma | Nombre
 II IEA
@@ -1131,7 +1131,7 @@ uso de la línea de crédito, en los términos, plazos y condiciones financieras
 El Solicitante/CLIENTE manifiesta su consentimiento en que para el producto Scotia Inversión Disponible, acepta mantener una cuenta con dispersión a la
 vista y al servicio de Banca por Internet para poder efectuar movimientos y disposiciones.
 
-Representante Legal Firma Nombre
+Representante Legal Firma	Nombre
 
 | RepresentanteLegalFirma | Nombre
 ee
@@ -1140,12 +1140,12 @@ Es del conocimiento del Solicitante/CLIENTE que el Banco podrá compartir su inf
 formar parte del Grupo Financiero al que pertenece a efecto de que le ofrezcan otro tipo de productos y servicios adicionales a los Productos y/o Servicios
 que están solicitando y saben que cuenta con el derecho innegable de contratar cualesquiera de ellos a través de un tercero independiente.
 
-Representante Legal Firma Nombre
+Representante Legal Firma	Nombre
 
 | RepresentanteLegalFirma | Nombre
 ee
 
-USO	EXCLUSIVO	DEL	BANCO:
+USO EXCLUSIVO DEL BANCO:
 
 Lugar de Contratación:	Fecha de Contratación:
 Nombre del Funcionario:	Puesto:	Número de Firma:
@@ -1156,7 +1156,7 @@ Confidencial. Uso exclusivo interno de Scotiabank México Página 6 de 6
 
 
 === OCR Pass 2 (Form Fields) ===
-Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES (BASA)
+	Scotiabank SOLICITUD/CONTRATO DE PRODUCTOS Y SERVICIOS EMPRESARIALES	(BASA)
                                                           PERSONA MORAL
 
 viii. Está de acuerdo en que la(s) persona(s) designada(s) como Contacto(s) Autorizado(s) podrá(n) solicitar en cualquier momento y por el medio
@@ -1233,13 +1233,13 @@ que están solicitando y saben que cuenta con el derecho innegable de contratar 
 
 Os
 
-USO	EXCLUSIVO	DEL	BANCO:
+USO EXCLUSIVO DEL BANCO:
 
 Lugar de Contratación:	Fecha de Contratación:
 
 Nombre del Funcionario:	Puesto:	Número de Firma:
 
-A	Y	N	UN
+	A Y N UN
 
 Confidencial. Uso exclusivo interno de Scotiabank México Página 6 de 6
 
