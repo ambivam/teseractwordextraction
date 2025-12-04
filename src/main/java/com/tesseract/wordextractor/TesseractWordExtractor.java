@@ -821,7 +821,64 @@ public class TesseractWordExtractor {
             }
         }
         
-        // Pattern 11: Generic multi-value lines with mixed content
+        // Pattern 11: Contract + Status + Type + Account (like "301352621 Alta Cheques N/A")
+        else if (processedLine.matches(".*\\d{9}\\s+Alta\\s+Cheques\\s+N/A.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 4) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
+            }
+        }
+        
+        // Pattern 12: Account type + Account number + Currency (like "Recaudación N/A MXN")
+        else if (processedLine.matches(".*\\b(Recaudación|Cobro de Comisiones|Cheques Devueltos SBC)\\s+N/A\\s+MXN.*")) {
+            String[] parts = processedLine.trim().split("\\s+", 3);
+            if (parts.length >= 3) {
+                if (parts[0].equals("Cheques") && parts[1].equals("Devueltos") && parts.length >= 5) {
+                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + parts[4];
+                } else if (parts[0].equals("Cobro") && parts[1].equals("de") && parts.length >= 5) {
+                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + parts[4];
+                } else {
+                    processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2];
+                }
+            }
+        }
+        
+        // Pattern 13: Payment method data (like "Efectivo Sí 1.00 60,000.00 N/A N/A")
+        else if (processedLine.matches(".*\\b(Efectivo|Cheques Scotiabank|Cheques Otros Bancos|Pagos Salvo Buen Cobro)\\s+(Sí|No)\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 6) {
+                if (parts[0].equals("Cheques") && (parts[1].equals("Scotiabank") || parts[1].equals("Otros"))) {
+                    processedLine = parts[0] + " " + parts[1] + (parts.length > 2 && parts[2].equals("Bancos") ? " " + parts[2] : "") + "\t" + 
+                                  parts[parts[1].equals("Scotiabank") ? 2 : 3] + "\t" + 
+                                  parts[parts[1].equals("Scotiabank") ? 3 : 4] + "\t" + 
+                                  parts[parts[1].equals("Scotiabank") ? 4 : 5] + "\t" + 
+                                  parts[parts[1].equals("Scotiabank") ? 5 : 6] + "\t" + 
+                                  (parts.length > (parts[1].equals("Scotiabank") ? 6 : 7) ? parts[parts[1].equals("Scotiabank") ? 6 : 7] : "");
+                } else if (parts[0].equals("Pagos") && parts[1].equals("Salvo")) {
+                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + " " + parts[3] + "\t" + parts[4] + "\t" + parts[5] + "\t" + parts[6] + "\t" + parts[7] + "\t" + parts[8];
+                } else {
+                    processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3] + "\t" + parts[4] + "\t" + parts[5];
+                }
+            }
+        }
+        
+        // Pattern 14: Reference data (like "RFC 12 13 RFC N/A")
+        else if (processedLine.matches(".*\\bRFC\\s+\\d{1,2}\\s+\\d{1,2}\\s+RFC\\s+N/A.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 5) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3] + "\t" + parts[4];
+            }
+        }
+        
+        // Pattern 15: Package configuration (like "1 Mensual Cheques 8 Posiciones Si Si")
+        else if (processedLine.matches(".*\\d+\\s+Mensual\\s+Cheques\\s+\\d+\\s+Posiciones\\s+Si\\s+Si.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 6) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + " " + parts[3] + " " + parts[4] + "\t" + parts[5] + "\t" + parts[6];
+            }
+        }
+        
+        // Pattern 16: Generic multi-value lines with mixed content
         // This catches lines with multiple distinct values separated by spaces
         else if (processedLine.matches(".*\\w+\\s+\\w+\\s+\\w+.*") && 
                  !processedLine.matches(".*[a-z].*") && // Skip lines with lowercase (likely sentences)
@@ -835,13 +892,13 @@ public class TesseractWordExtractor {
             // Only apply if we have distinct values (not a sentence)
             boolean hasDistinctValues = false;
             for (String part : parts) {
-                if (part.matches("\\d+") || part.matches("[A-Z]{2,}") || part.matches(".*[/$%].*") || part.equals("N/A") || part.equals("X")) {
+                if (part.matches("\\d+") || part.matches("[A-Z]{2,}") || part.matches(".*[/$%].*") || part.equals("N/A") || part.equals("X") || part.equals("Si") || part.equals("No")) {
                     hasDistinctValues = true;
                     break;
                 }
             }
             
-            if (hasDistinctValues && parts.length <= 6) { // Limit to reasonable number of columns
+            if (hasDistinctValues && parts.length <= 8) { // Increased limit for more complex tables
                 processedLine = String.join("\t", parts);
             }
         }
@@ -881,6 +938,15 @@ public class TesseractWordExtractor {
             // Additional patterns for other pages
             {"Servicios Disponibles", "Servicios Disponibles"},
             {"CONSULTAS PAGOS CHEQUES ADMINISTRACIÓN", "CONSULTAS\tPAGOS\tCHEQUES\tADMINISTRACIÓN"},
+            // Form structure patterns
+            {"Periodicidad del Formato \\(Layout Genera Archivo SIN Cuenta de Cargo de Comisiones del", "Periodicidad del Formato (Layout\tGenera Archivo SIN\tCuenta de Cargo de Comisiones del"},
+            {"Paquete Reporte Mensual Archivo Movimientos Paquete", "Paquete\tReporte Mensual\tArchivo Movimientos\tPaquete"},
+            {"Cuenta Moneda", "Cuenta\tMoneda"},
+            {"N/A MXN", "N/A\tMXN"},
+            // Package and report patterns
+            {"Medio de Envío Electrónico", "Medio de Envío Electrónico"},
+            {"Paquete", "Paquete"},
+            {"Cuenta N/A Moneda MXN", "Cuenta\tN/A\tMoneda\tMXN"},
             {"Pagos en Ventanilla \\* X Pagos Referenciados IMSS X Solicitud de Chequeras X Asignación de Cuentas - Usuarios", "Pagos en Ventanilla *\tX Pagos Referenciados IMSS\tX Solicitud de Chequeras\tX Asignación de Cuentas - Usuarios"},
             {"X Saldos General X Traspasos Mismo Banco X Suspensión Cheques X Autorizaciones Doble Firma", "X Saldos General\tX Traspasos Mismo Banco\tX Suspensión Cheques\tX Autorizaciones Doble Firma"},
             {"X Saldos por Producto X Traspasos Otros Bancos X Protección de Cuentas X Preferencias Solicitante", "X Saldos por Producto\tX Traspasos Otros Bancos\tX Protección de Cuentas\tX Preferencias Solicitante"},
@@ -892,7 +958,54 @@ public class TesseractWordExtractor {
             {"X Cobranza Referenciada X Contribuciones Gubernamentales Administración e-Tesorero X Activación de e-Llave", "X Cobranza Referenciada\tX Contribuciones Gubernamentales\tAdministración e-Tesorero\tX Activación de e-Llave"},
             // User management patterns
             {"Teléfono Extensión Usuario Automático Tipo de Usuario", "Teléfono\tExtensión\tUsuario Automático\tTipo de Usuario"},
-            {"ID de Rol Rol Idioma Moneda", "ID de Rol\tRol\tIdioma\tMoneda"}
+            {"ID de Rol Rol Idioma Moneda", "ID de Rol\tRol\tIdioma\tMoneda"},
+            // Account and service patterns from pages 2-6
+            {"Número de Contrato Estado Tipo de Cuenta Número Cuenta", "Número de Contrato\tEstado\tTipo de Cuenta\tNúmero Cuenta"},
+            {"Nombre del Titular de la Cuenta Moneda", "Nombre del Titular de la Cuenta\tMoneda"},
+            {"Cargo Abono Consulta Opciones", "Cargo\tAbono\tConsulta\tOpciones"},
+            {"Individual Si Si N/A", "Individual\tSi\tSi\tN/A"},
+            {"Nueva Alta Envío al Banco Recepción del Banco", "Nueva Alta\tEnvío al Banco\tRecepción del Banco"},
+            {"Tipo de Formato Layout Número de Cuenta Moneda Recepción del Banco", "Tipo de Formato Layout\tNúmero de Cuenta\tMoneda\tRecepción del Banco"},
+            {"Cheques 8 Posiciones MXN X", "Cheques 8 Posiciones\tMXN\tX"},
+            {"Número de Cuenta Moneda Envío al Banco Recepción del Banco", "Número de Cuenta\tMoneda\tEnvío al Banco\tRecepción del Banco"},
+            {"No\\. de Banca por Internet Cuenta de Cobro de Comisión Número de Cuenta Moneda", "No. de Banca por Internet\tCuenta de Cobro de Comisión\tNúmero de Cuenta\tMoneda"},
+            {"Tipo de Cálculo Tipo de Referencia Validación Dígito Verificador Longitud Mínima Longitud Máxima Validación SPEI/SPID", "Tipo de Cálculo\tTipo de Referencia\tValidación Dígito Verificador\tLongitud Mínima\tLongitud Máxima\tValidación SPEI/SPID"},
+            {"Base 10 Numérica Si 2 10 Si", "Base 10\tNumérica\tSi\t2\t10\tSi"},
+            {"No\\. Contrato Tipo de Formato a Utilizar Moneda Acepta Pagos Duplicados", "No. Contrato\tTipo de Formato a Utilizar\tMoneda\tAcepta Pagos Duplicados"},
+            {"301352621 Con Recibo MXN No", "301352621\tCon Recibo\tMXN\tNo"},
+            {"Título que se mostrará en el Comprobante de Pago Medios por los que se recibirán los Pagos", "Título que se mostrará en el Comprobante de Pago\tMedios por los que se recibirán los Pagos"},
+            {"Tamales lleve lleve Sucursal y Banca por Internet", "Tamales lleve lleve\tSucursal y Banca por Internet"},
+            {"Recepción del Recibo después del Vencimiento para su aceptación Tasa o Monto Fijo para su Aceptación", "Recepción del Recibo después del Vencimiento para su aceptación\tTasa o Monto Fijo para su Aceptación"},
+            {"Se aceptan pero no se calcula interés 5 0\\.00", "Se aceptan pero no se calcula interés\t5\t0.00"},
+            {"Nombre de las Cantidades Adicionales Se calcula IVA de los Intereses", "Nombre de las Cantidades Adicionales\tSe calcula IVA de los Intereses"},
+            {"Intereses Moratorios No", "Intereses Moratorios\tNo"},
+            {"Se Aplican Descuentos por Pronto Pago al Pago Tasa o Monto Fijo del Descuento", "Se Aplican Descuentos por Pronto Pago al Pago\tTasa o Monto Fijo del Descuento"},
+            {"Sí - Por días de anticipo \\(Monto fijo\\) 5 15\\.00", "Sí - Por días de anticipo (Monto fijo)\t5\t15.00"},
+            {"Genera Cortes Intradía \\(envío del archivo al solicitante\\) Periodos para Realizar la Entrega de Información", "Genera Cortes Intradía (envío del archivo al solicitante)\tPeriodos para Realizar la Entrega de Información"},
+            {"Sí - Entrega Información a partir del Corte 45 min", "Sí - Entrega Información a partir del Corte\t45 min"},
+            {"Tipo de Cuenta No\\. Cuenta Moneda", "Tipo de Cuenta\tNo. Cuenta\tMoneda"},
+            {"Recaudación N/A MXN", "Recaudación\tN/A\tMXN"},
+            {"Cobro de Comisiones N/A MXN", "Cobro de Comisiones\tN/A\tMXN"},
+            {"Cheques Devueltos SBC N/A MXN", "Cheques Devueltos SBC\tN/A\tMXN"},
+            {"Forma de Pago Aceptar Monto Mínimo Monto Máximo antes del Vencimiento después del Vencimiento", "Forma de Pago\tAceptar\tMonto Mínimo\tMonto Máximo\tantes del Vencimiento\tdespués del Vencimiento"},
+            {"Efectivo Sí 1\\.00 60,000\\.00 N/A N/A", "Efectivo\tSí\t1.00\t60,000.00\tN/A\tN/A"},
+            {"Cheques Scotiabank Sí 1\\.00 60,000\\.00 N/A N/A", "Cheques Scotiabank\tSí\t1.00\t60,000.00\tN/A\tN/A"},
+            {"Cheques Otros Bancos No N/A N/A N/A N/A", "Cheques Otros Bancos\tNo\tN/A\tN/A\tN/A\tN/A"},
+            {"Pagos Salvo Buen Cobro No N/A N/A N/A N/A", "Pagos Salvo Buen Cobro\tNo\tN/A\tN/A\tN/A\tN/A"},
+            {"Título de Referencia Longitud Mínima Longitud Máxima Formato de la Referencia Formato Fecha", "Título de Referencia\tLongitud Mínima\tLongitud Máxima\tFormato de la Referencia\tFormato Fecha"},
+            {"RFC 12 13 RFC N/A", "RFC\t12\t13\tRFC\tN/A"},
+            {"Orden de la Referencia Orden de la Referencia Validación del Dígito Tipo de Cálculo de los", "Orden de la Referencia\tOrden de la Referencia\tValidación del Dígito\tTipo de Cálculo de los"},
+            {"en el Archivo de Salida en el Estado de Cuenta Verificador del RFC Dígitos Verificadores Número Validación Especial", "en el Archivo de Salida\ten el Estado de Cuenta\tVerificador del RFC\tDígitos Verificadores Número\tValidación Especial"},
+            {"1 Primer Lugar Sí Modulo 10 N/A", "1\tPrimer Lugar\tSí\tModulo 10\tN/A"},
+            {"No\\. Contrato SEL No\\. Servicio", "No. Contrato SEL\tNo. Servicio"},
+            {"Scotia en Línea Número de Servicio Host to Host Número de Servicio \\(Sólo sí aplica\\)", "Scotia en Línea Número de Servicio\tHost to Host Número de Servicio (Sólo sí aplica)"},
+            {"301352621 N/A", "301352621\tN/A"},
+            {"Mismo día Día siguiente X Ambos", "Mismo día\tDía siguiente\tX\tAmbos"},
+            {"Cuenta de Cargo para la comisión: MXN", "Cuenta de Cargo para la comisión:\tMXN"},
+            {"Cuenta de Cargo para la Dispersión: MXN", "Cuenta de Cargo para la Dispersión:\tMXN"},
+            {"Cuenta de Abono para las devoluciones de los pagos no efectuados a las cuentas de los Beneficiarios: MXN", "Cuenta de Abono para las devoluciones de los pagos no efectuados a las cuentas de los Beneficiarios:\tMXN"},
+            {"1 Mensual Cheques 8 Posiciones Si Si", "1\tMensual\tCheques 8 Posiciones\tSi\tSi"},
+            {"VI\\. ACEPTACIÓN DE CONDICIONES Y DECLARACIONES", "VI.\tACEPTACIÓN\tDE\tCONDICIONES\tY\tDECLARACIONES"}
         };
         
         String processedLine = line;
