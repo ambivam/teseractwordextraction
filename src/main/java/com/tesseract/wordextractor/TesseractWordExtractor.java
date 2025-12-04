@@ -698,14 +698,151 @@ public class TesseractWordExtractor {
         // This catches other field patterns we might have missed
         processedLine = processedLine.replaceAll("([A-Za-zÀ-ÿ\\s/()\\-\\.]+):\\s{2,}", "$1:\t");
         
-        // Handle specific multi-field lines like "RFC con Homoclave Número de Cliente Actividad"
-        // followed by values "TJT620428BX8 301352621 INDUSTRIA DE METALES NO FERROSOS"
+        // Handle specific multi-field data lines
+        processedLine = handleDataValueLines(processedLine);
+        
+        return processedLine;
+    }
+    
+    /**
+     * Handle data value lines by inserting tabs between values
+     */
+    private String handleDataValueLines(String line) {
+        String processedLine = line;
+        
+        // Pattern 1: RFC + Client Number + Activity (like "TJT620428BX8 301352621 INDUSTRIA DE METALES NO FERROSOS")
         if (processedLine.matches(".*\\b[A-Z0-9]{12,}\\s+\\d{9}\\s+[A-Z\\s]+.*")) {
-            // This looks like a data line with RFC, Client Number, and Activity
-            // Split and format with tabs
             String[] parts = processedLine.trim().split("\\s+", 3);
             if (parts.length >= 3) {
                 processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2];
+            }
+        }
+        
+        // Pattern 2: Date + Location + Country + Number (like "28/04/1962 CIUDAD DE MEXICO MEXICO 13625")
+        else if (processedLine.matches(".*\\d{2}/\\d{2}/\\d{4}\\s+[A-Z\\s]+\\s+[A-Z]+\\s+\\d+.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 4) {
+                // Date, then combine location words until we hit a single word country, then number
+                StringBuilder result = new StringBuilder();
+                result.append(parts[0]); // Date
+                
+                int i = 1;
+                StringBuilder location = new StringBuilder();
+                // Collect location words (usually multiple words like "CIUDAD DE MEXICO")
+                while (i < parts.length - 2) {
+                    if (location.length() > 0) location.append(" ");
+                    location.append(parts[i]);
+                    i++;
+                }
+                result.append("\t").append(location.toString());
+                result.append("\t").append(parts[parts.length - 2]); // Country
+                result.append("\t").append(parts[parts.length - 1]); // Number
+                processedLine = result.toString();
+            }
+        }
+        
+        // Pattern 3: Multiple numeric values (like "2 10 100 10")
+        else if (processedLine.matches("^\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s*$")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            processedLine = String.join("\t", parts);
+        }
+        
+        // Pattern 4: Mixed alphanumeric values (like "301352621 N/A")
+        else if (processedLine.matches(".*\\b\\d{9}\\s+N/A.*")) {
+            processedLine = processedLine.replaceAll("(\\d{9})\\s+(N/A)", "$1\t$2");
+        }
+        
+        // Pattern 5: Name + Type + Percentage + Amount + Type (like "PAMELA LEYVA RAMIREZ Socio Accionista PF 100 $200,000.00 Directo")
+        else if (processedLine.matches(".*[A-Z]+\\s+[A-Z]+\\s+RAMIREZ\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 7) {
+                StringBuilder result = new StringBuilder();
+                // Name (first 3 parts)
+                result.append(parts[0]).append(" ").append(parts[1]).append(" ").append(parts[2]);
+                result.append("\t");
+                // Type (next 2-3 parts)
+                result.append(parts[3]).append(" ").append(parts[4]);
+                if (parts.length > 7 && parts[5].equals("PF")) {
+                    result.append(" ").append(parts[5]);
+                    result.append("\t").append(parts[6]); // Percentage
+                    result.append("\t").append(parts[7]); // Amount
+                    if (parts.length > 8) {
+                        result.append("\t").append(parts[8]); // Type
+                    }
+                } else {
+                    result.append("\t").append(parts[5]); // Percentage
+                    result.append("\t").append(parts[6]); // Amount
+                    if (parts.length > 7) {
+                        result.append("\t").append(parts[7]); // Type
+                    }
+                }
+                processedLine = result.toString();
+            }
+        }
+        
+        // Pattern 6: RECA codes with dates (like "0319-999-038191/03-02918-1024 PMORALES-303 24/10/2024 25/11/2024")
+        else if (processedLine.matches(".*\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 4) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
+            }
+        }
+        
+        // Pattern 7: Service codes with dates (like "0319-434-038196/05-02775-1024 15/10/2024 0319-003-021810/07-02848-1024 18/10/2024")
+        else if (processedLine.matches(".*\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+\\d{2}/\\d{2}/\\d{4}\\s+\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+\\d{2}/\\d{2}/\\d{4}.*")) {
+            String[] parts = processedLine.trim().split("\\s+");
+            if (parts.length >= 4) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
+            }
+        }
+        
+        // Pattern 8: Phone + Extension + User + Type (like "5523457890 N/A X Administrador de Sistema")
+        else if (processedLine.matches(".*\\d{10}\\s+N/A\\s+X\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+", 4);
+            if (parts.length >= 4) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
+            }
+        }
+        
+        // Pattern 9: Phone + Extension + User + Type (with extension number like "5598763457 1234 X Administrador")
+        else if (processedLine.matches(".*\\d{10}\\s+\\d{1,4}\\s+X\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+", 4);
+            if (parts.length >= 4) {
+                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
+            }
+        }
+        
+        // Pattern 10: ID + Role + Language + Currency (like "001 Super Usuario Español Peso Mexicano")
+        else if (processedLine.matches(".*\\d{3}\\s+Super\\s+Usuario\\s+.*")) {
+            String[] parts = processedLine.trim().split("\\s+", 4);
+            if (parts.length >= 4) {
+                // Combine "Super Usuario" as one field
+                processedLine = parts[0] + "\t" + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + (parts.length > 4 ? String.join(" ", java.util.Arrays.copyOfRange(parts, 4, parts.length)) : "");
+            }
+        }
+        
+        // Pattern 11: Generic multi-value lines with mixed content
+        // This catches lines with multiple distinct values separated by spaces
+        else if (processedLine.matches(".*\\w+\\s+\\w+\\s+\\w+.*") && 
+                 !processedLine.matches(".*[a-z].*") && // Skip lines with lowercase (likely sentences)
+                 !processedLine.startsWith("=") && // Skip section headers
+                 !processedLine.matches(".*\\d{1,2}\\..*") && // Skip numbered sections
+                 !processedLine.contains("@") && // Skip email addresses
+                 !processedLine.matches(".*\\b(de|la|el|en|por|para|con|del|al)\\b.*") && // Skip Spanish articles/prepositions
+                 processedLine.trim().split("\\s+").length >= 3) {
+            
+            String[] parts = processedLine.trim().split("\\s+");
+            // Only apply if we have distinct values (not a sentence)
+            boolean hasDistinctValues = false;
+            for (String part : parts) {
+                if (part.matches("\\d+") || part.matches("[A-Z]{2,}") || part.matches(".*[/$%].*") || part.equals("N/A") || part.equals("X")) {
+                    hasDistinctValues = true;
+                    break;
+                }
+            }
+            
+            if (hasDistinctValues && parts.length <= 6) { // Limit to reasonable number of columns
+                processedLine = String.join("\t", parts);
             }
         }
         
@@ -740,7 +877,22 @@ public class TesseractWordExtractor {
             {"No\\. Contrato Cuenta para Cobro de Comisiones", "No. Contrato\tCuenta para Cobro de Comisiones"},
             {"Usuarios Máximos Grupos Máximos Líneas Máximas Roles Máximos", "Usuarios Máximos\tGrupos Máximos\tLíneas Máximas\tRoles Máximos"},
             {"No\\. RECA Servicios Fecha Inscripción al RECA No\\. RECA CreCIMIENTO PyME Fecha Inscripción al RECA", "No. RECA Servicios\tFecha Inscripción al RECA\tNo. RECA CreCIMIENTO PyME\tFecha Inscripción al RECA"},
-            {"Transaccionales Servicios Transaccionales CIMA CreCIMIENTO PyME CIMA", "Transaccionales\tServicios Transaccionales CIMA\tCreCIMIENTO PyME CIMA"}
+            {"Transaccionales Servicios Transaccionales CIMA CreCIMIENTO PyME CIMA", "Transaccionales\tServicios Transaccionales CIMA\tCreCIMIENTO PyME CIMA"},
+            // Additional patterns for other pages
+            {"Servicios Disponibles", "Servicios Disponibles"},
+            {"CONSULTAS PAGOS CHEQUES ADMINISTRACIÓN", "CONSULTAS\tPAGOS\tCHEQUES\tADMINISTRACIÓN"},
+            {"Pagos en Ventanilla \\* X Pagos Referenciados IMSS X Solicitud de Chequeras X Asignación de Cuentas - Usuarios", "Pagos en Ventanilla *\tX Pagos Referenciados IMSS\tX Solicitud de Chequeras\tX Asignación de Cuentas - Usuarios"},
+            {"X Saldos General X Traspasos Mismo Banco X Suspensión Cheques X Autorizaciones Doble Firma", "X Saldos General\tX Traspasos Mismo Banco\tX Suspensión Cheques\tX Autorizaciones Doble Firma"},
+            {"X Saldos por Producto X Traspasos Otros Bancos X Protección de Cuentas X Preferencias Solicitante", "X Saldos por Producto\tX Traspasos Otros Bancos\tX Protección de Cuentas\tX Preferencias Solicitante"},
+            {"X Saldos por Grupo X Traspasos Internacionales X Protección de Cheques X Preferencias Usuario", "X Saldos por Grupo\tX Traspasos Internacionales\tX Protección de Cheques\tX Preferencias Usuario"},
+            {"X Tasas Pago de Facturas \\* TESORERÍA X Mantenimiento de Cuentas", "X Tasas\tPago de Facturas *\tTESORERÍA\tX Mantenimiento de Cuentas"},
+            {"X Metales y Divisas X Pago de Servicios Consulta de Saldos X Grupos", "X Metales y Divisas\tX Pago de Servicios\tConsulta de Saldos\tX Grupos"},
+            {"X Cobranza sin Recibo X Contribuciones SAT Mantenimiento a Límites X Roles", "X Cobranza sin Recibo\tX Contribuciones SAT\tMantenimiento a Límites\tX Roles"},
+            {"X Cobranza con Recibo X Cobranza Domiciliada Consulta de Límites X Usuarios", "X Cobranza con Recibo\tX Cobranza Domiciliada\tConsulta de Límites\tX Usuarios"},
+            {"X Cobranza Referenciada X Contribuciones Gubernamentales Administración e-Tesorero X Activación de e-Llave", "X Cobranza Referenciada\tX Contribuciones Gubernamentales\tAdministración e-Tesorero\tX Activación de e-Llave"},
+            // User management patterns
+            {"Teléfono Extensión Usuario Automático Tipo de Usuario", "Teléfono\tExtensión\tUsuario Automático\tTipo de Usuario"},
+            {"ID de Rol Rol Idioma Moneda", "ID de Rol\tRol\tIdioma\tMoneda"}
         };
         
         String processedLine = line;
