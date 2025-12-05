@@ -49,14 +49,15 @@ public class TesseractWordExtractor {
     public enum ProcessingMode {
         FAST(300),      // Fast processing, good accuracy
         BALANCED(400),  // Balanced speed and accuracy (default)
-        HIGH_QUALITY(600); // Maximum accuracy, slower processing
+        HIGH_QUALITY(600), // Maximum accuracy, slower processing
+        ULTRA_HIGH_QUALITY(800); // Ultra high quality for images with small text
         
         private final int dpi;
         ProcessingMode(int dpi) { this.dpi = dpi; }
         public int getDpi() { return dpi; }
     }
     
-    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.HIGH_QUALITY;
+    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH_QUALITY;
     
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;
@@ -98,13 +99,36 @@ public class TesseractWordExtractor {
                 throw new RuntimeException("Tesseract language data not found");
             }
             
-            // Use English and Spanish language models for better special character recognition
-            tesseract.setLanguage("eng+spa");
+            // Check available languages and use appropriate one
+            try {
+                // Try Portuguese first
+                tesseract.setLanguage("por");
+                LOGGER.info("Using Portuguese language model");
+            } catch (Exception e1) {
+                try {
+                    // Fallback to Portuguese + English
+                    tesseract.setLanguage("por+eng");
+                    LOGGER.info("Using Portuguese + English language models");
+                } catch (Exception e2) {
+                    try {
+                        // Fallback to just English
+                        tesseract.setLanguage("eng");
+                        LOGGER.warning("Portuguese not available, using English only");
+                        System.err.println("WARNING: Portuguese language model not found, using English only");
+                        System.err.println("For better results, install Portuguese language data:");
+                        System.err.println("Download por.traineddata from: https://github.com/tesseract-ocr/tessdata");
+                        System.err.println("Place it in: " + this.tesseractDataPath);
+                    } catch (Exception e3) {
+                        LOGGER.severe("No language models available");
+                        throw new RuntimeException("No Tesseract language models available", e3);
+                    }
+                }
+            }
             
             // Set OCR Engine Mode to LSTM only for better accuracy
             tesseract.setOcrEngineMode(1);
             
-            // Set Page Segmentation Mode to auto (most stable)
+            // Set Page Segmentation Mode to auto (most reliable)
             tesseract.setPageSegMode(3); // Auto page segmentation
             
             // Configure for better UTF-8 and special character handling
@@ -112,17 +136,31 @@ public class TesseractWordExtractor {
             tesseract.setVariable("tessedit_char_whitelist", "");
             tesseract.setVariable("tessedit_char_blacklist", "");
             
-            // Enhanced configuration for high-resolution processing (stable settings)
-            tesseract.setVariable("textord_min_linesize", "2.0");
-            tesseract.setVariable("textord_noise_sizelimit", "0.7");
+            // Simple, proven Tesseract configuration
             tesseract.setVariable("classify_enable_learning", "0");
             tesseract.setVariable("classify_enable_adaptive_matcher", "0");
-            tesseract.setVariable("wordrec_enable_assoc", "0");
             
-            // Better handling of forms and checkboxes
-            tesseract.setVariable("textord_tabfind_find_tables", "0"); // Disable table finding to avoid issues
-            tesseract.setVariable("segment_penalty_dict_frequent_word", "0");
-            tesseract.setVariable("allow_blob_division", "0");
+            // List available languages for debugging
+            try {
+                java.io.File tessDataDir = new java.io.File(this.tesseractDataPath);
+                if (tessDataDir.exists()) {
+                    java.io.File[] languageFiles = tessDataDir.listFiles((dir, name) -> name.endsWith(".traineddata"));
+                    if (languageFiles != null && languageFiles.length > 0) {
+                        StringBuilder availableLangs = new StringBuilder("Available language models: ");
+                        for (java.io.File langFile : languageFiles) {
+                            String langCode = langFile.getName().replace(".traineddata", "");
+                            availableLangs.append(langCode).append(" ");
+                        }
+                        LOGGER.info(availableLangs.toString());
+                        System.out.println(availableLangs.toString());
+                    } else {
+                        LOGGER.warning("No language model files found in tessdata directory");
+                        System.err.println("WARNING: No .traineddata files found in: " + this.tesseractDataPath);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.warning("Could not list available languages: " + e.getMessage());
+            }
             
             LOGGER.info("Tesseract initialized successfully");
             LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
@@ -363,50 +401,36 @@ public class TesseractWordExtractor {
             
             LOGGER.info("Image dimensions: " + originalImage.getWidth() + "x" + originalImage.getHeight());
             
-            // Enhanced preprocessing for high-quality OCR
+            // Test both original and processed images
             BufferedImage processedImage = preprocessImageForHighQualityOCR(originalImage);
             
-            // Multiple OCR passes for comprehensive text extraction
+            LOGGER.info("Testing with both original and processed images for comparison");
+            
+            // Simple OCR passes with basic approaches
             StringBuilder imageTextBuilder = new StringBuilder();
             
-            // Pass 1: Standard OCR with PSM 3 (auto detection)
+            // Pass 1: Simple processed image with PSM 3 (auto)
             try {
-                String imageText1 = performOCRWithConfig(processedImage, 3, "Auto Detection");
-                imageTextBuilder.append("=== OCR Pass 1 (Auto Detection) ===\n").append(imageText1).append("\n\n");
+                String imageText1 = performOCRWithConfig(processedImage, 3, "Simple Processed (Auto)");
+                imageTextBuilder.append("=== OCR Pass 1 (Simple Processed - Auto) ===\n").append(imageText1).append("\n\n");
             } catch (Exception e) {
                 LOGGER.warning("Pass 1 OCR failed: " + e.getMessage());
             }
             
-            // Pass 2: Form-optimized OCR with PSM 6 (uniform block)
+            // Pass 2: Original image with PSM 3 (auto)
             try {
-                String imageText2 = performOCRWithConfig(processedImage, 6, "Form Fields");
-                imageTextBuilder.append("=== OCR Pass 2 (Form Fields) ===\n").append(imageText2).append("\n\n");
+                String imageText2 = performOCRWithConfig(originalImage, 3, "Original Image (Auto)");
+                imageTextBuilder.append("=== OCR Pass 2 (Original Image - Auto) ===\n").append(imageText2).append("\n\n");
             } catch (Exception e) {
                 LOGGER.warning("Pass 2 OCR failed: " + e.getMessage());
             }
             
-            // Pass 3: Single word detection
+            // Pass 3: Specialized numbers and codes recognition
             try {
-                String imageText3 = performOCRWithConfig(processedImage, 8, "Single Words/Dates");
-                imageTextBuilder.append("=== OCR Pass 3 (Single Words/Dates) ===\n").append(imageText3).append("\n\n");
+                String imageText3 = performNumbersOCR(processedImage);
+                imageTextBuilder.append("=== OCR Pass 3 (Numbers & Codes Specialized) ===\n").append(imageText3).append("\n\n");
             } catch (Exception e) {
                 LOGGER.warning("Pass 3 OCR failed: " + e.getMessage());
-            }
-            
-            // Pass 4: Checkbox and symbol detection
-            try {
-                String imageText4 = performCheckboxOCR(processedImage);
-                imageTextBuilder.append("=== OCR Pass 4 (Checkboxes & Symbols) ===\n").append(imageText4).append("\n\n");
-            } catch (Exception e) {
-                LOGGER.warning("Pass 4 OCR failed: " + e.getMessage());
-            }
-            
-            // Pass 5: High-resolution small text detection
-            try {
-                String imageText5 = performSmallTextOCR(processedImage);
-                imageTextBuilder.append("=== OCR Pass 5 (Small Text Detection) ===\n").append(imageText5).append("\n\n");
-            } catch (Exception e) {
-                LOGGER.warning("Pass 5 OCR failed: " + e.getMessage());
             }
             
             allText.append(imageTextBuilder.toString());
@@ -431,8 +455,12 @@ public class TesseractWordExtractor {
         System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.json");
         System.out.println("\nExtraction Summary:");
         System.out.println("- Image dimensions: " + imageData.get("imageWidth") + "x" + imageData.get("imageHeight"));
-        System.out.println("- OCR processing: 5 passes completed");
-        System.out.println("- Text extraction: Enhanced Multi-Pass OCR");
+        System.out.println("- OCR processing: 3 passes (Simple Back-to-Basics)");
+        System.out.println("- Image processing: 2x scaling + basic contrast enhancement");
+        System.out.println("- Final processed size: " + (((Integer)imageData.get("imageWidth")) * 2) + "x" + (((Integer)imageData.get("imageHeight")) * 2));
+        System.out.println("- Languages tested: Portuguese+English, English-only");
+        System.out.println("- Processing DPI: " + PROCESSING_MODE.getDpi());
+        System.out.println("- Text extraction: Simple Proven Techniques");
     }
     
     
@@ -522,30 +550,117 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Perform OCR with specific configuration
+     * Perform OCR with specific language
+     */
+    private String performOCRWithLanguage(BufferedImage image, String language, int psmMode, String passDescription) throws TesseractException {
+        // Create temporary Tesseract instance with specific language
+        Tesseract tempTesseract = new Tesseract();
+        tempTesseract.setDatapath(this.tesseractDataPath);
+        tempTesseract.setLanguage(language);
+        tempTesseract.setOcrEngineMode(1);
+        tempTesseract.setPageSegMode(psmMode);
+        
+        LOGGER.info("OCR Pass (" + passDescription + ") - Language: " + language + ", PSM: " + psmMode);
+        return tempTesseract.doOCR(image);
+    }
+    
+    /**
+     * Specialized OCR for numbers and codes with enhanced character recognition
+     */
+    private String performNumbersOCR(BufferedImage image) throws TesseractException {
+        // Create specialized Tesseract instance for numbers and codes
+        Tesseract numbersTesseract = new Tesseract();
+        
+        try {
+            numbersTesseract.setDatapath(this.tesseractDataPath);
+            numbersTesseract.setLanguage("eng"); // English for better number recognition
+            numbersTesseract.setOcrEngineMode(1);
+            numbersTesseract.setPageSegMode(8); // Single word mode for numbers
+            
+            // Optimized for numbers and codes
+            numbersTesseract.setVariable("tessedit_char_whitelist", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:/-. ");
+            numbersTesseract.setVariable("classify_bln_numeric_mode", "1");
+            numbersTesseract.setVariable("textord_min_linesize", "1.0");
+            numbersTesseract.setVariable("textord_noise_sizelimit", "0.3");
+            numbersTesseract.setVariable("classify_enable_learning", "0");
+            numbersTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            
+            LOGGER.info("OCR Pass (Numbers & Codes) - Specialized number recognition");
+            return numbersTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Numbers OCR failed: " + e.getMessage());
+            return "[Numbers detection failed]";
+        }
+    }
+    
+    /**
+     * Perform OCR with specific configuration - enhanced for comprehensive text extraction
      */
     private String performOCRWithConfig(BufferedImage image, int pageSegMode, String passName) throws TesseractException {
         tesseract.setPageSegMode(pageSegMode);
         
-        // Enhanced configuration for specific pass
+        // Optimized configuration for interface text extraction
         switch (pageSegMode) {
-            case 6: // Form fields
+            case 3: // Auto detection - optimized for interface text with better number recognition
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                tesseract.setVariable("textord_min_linesize", "1.5"); // Reduced for better small text
+                tesseract.setVariable("textord_noise_sizelimit", "0.5"); // More aggressive noise filtering
                 tesseract.setVariable("textord_tabfind_find_tables", "1");
-                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789áéíóúñÁÉÍÓÚÑüÜ¿¡.,;:()[]{}/-_@#$%&*+=<>?!\"' ");
+                // Enhanced settings for better character recognition
+                tesseract.setVariable("classify_bln_numeric_mode", "1"); // Better number recognition
+                tesseract.setVariable("tessedit_single_match", "0"); // Allow multiple character matches
+                tesseract.setVariable("segment_penalty_dict_frequent_word", "1"); // Prefer dictionary words
                 break;
-            case 8: // Single words/dates
-                tesseract.setVariable("tessedit_char_whitelist", "0123456789/.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+            case 6: // Form fields - comprehensive Portuguese character set
+                tesseract.setVariable("textord_tabfind_find_tables", "1");
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-._()[] ");
+                tesseract.setVariable("textord_min_linesize", "2.5");
+                tesseract.setVariable("textord_noise_sizelimit", "0.8");
+                break;
+            case 7: // Single text line - for headers and labels
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                tesseract.setVariable("textord_min_linesize", "1.5");
+                tesseract.setVariable("textord_noise_sizelimit", "0.5");
+                break;
+            case 8: // Single words/dates - numbers and dates
+                tesseract.setVariable("tessedit_char_whitelist", "0123456789/:-. ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+                tesseract.setVariable("textord_min_linesize", "1.8");
+                tesseract.setVariable("textord_noise_sizelimit", "0.6");
+                break;
+            case 11: // Sparse text - for scattered interface elements
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                tesseract.setVariable("textord_min_linesize", "1.0");
+                tesseract.setVariable("textord_noise_sizelimit", "0.4");
+                tesseract.setVariable("textord_tabfind_find_tables", "1");
+                break;
+            case 13: // Raw line - for difficult text
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                tesseract.setVariable("textord_min_linesize", "1.2");
+                tesseract.setVariable("textord_noise_sizelimit", "0.3");
                 break;
             default:
-                tesseract.setVariable("tessedit_char_whitelist", "");
+                tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                tesseract.setVariable("textord_min_linesize", "2.0");
                 break;
         }
         
+        // Memory-optimized aggressive settings for better text capture
+        tesseract.setVariable("textord_heavy_nr", "0"); // Disable to prevent memory issues
+        tesseract.setVariable("textord_show_initial_words", "0"); // Disable to prevent memory issues
+        tesseract.setVariable("wordrec_enable_assoc", "0"); // Keep disabled for stability
+        
         String result = tesseract.doOCR(image);
         
-        // Reset to default
+        // Reset to default values
         tesseract.setPageSegMode(3);
         tesseract.setVariable("tessedit_char_whitelist", "");
+        tesseract.setVariable("textord_min_linesize", "2.0");
+        tesseract.setVariable("textord_noise_sizelimit", "0.7");
+        tesseract.setVariable("textord_tabfind_find_tables", "0");
+        tesseract.setVariable("textord_heavy_nr", "0");
+        tesseract.setVariable("textord_show_initial_words", "0");
+        tesseract.setVariable("wordrec_enable_assoc", "0");
         
         return result;
     }
@@ -662,79 +777,53 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Enhanced preprocessing specifically for high-quality image OCR
+     * Simple, proven preprocessing approach
+     * Basic techniques that actually work for interface screenshots
      */
     private BufferedImage preprocessImageForHighQualityOCR(BufferedImage originalImage) {
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
         
-        // Enhanced preprocessing for high-quality OCR with small text detection
-        BufferedImage processedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        LOGGER.info("Original image size: " + width + "x" + height);
+        LOGGER.info("Using simple, proven preprocessing approach");
         
-        // First pass: Convert to grayscale with optimized weights
-        int[][] grayValues = new int[height][width];
+        // Simple 2x scaling - enough to help but not overwhelming
+        int scaleFactor = 2;
+        int scaledWidth = width * scaleFactor;
+        int scaledHeight = height * scaleFactor;
         
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int rgb = originalImage.getRGB(x, y);
-                int red = (rgb >> 16) & 0xFF;
-                int green = (rgb >> 8) & 0xFF;
-                int blue = rgb & 0xFF;
-                
-                // Enhanced grayscale conversion for small text
-                int gray = (int) (0.299 * red + 0.587 * green + 0.114 * blue);
-                grayValues[y][x] = gray;
-            }
-        }
+        LOGGER.info("Simple 2x scaling to: " + scaledWidth + "x" + scaledHeight);
         
-        // Second pass: Advanced adaptive processing for small text
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int gray = grayValues[y][x];
+        // Create scaled image with basic quality settings
+        BufferedImage scaledImage = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g2d = scaledImage.createGraphics();
+        g2d.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2d.drawImage(originalImage, 0, 0, scaledWidth, scaledHeight, null);
+        g2d.dispose();
+        
+        // Enhanced grayscale conversion with optimized contrast for interface text
+        BufferedImage processedImage = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
+        
+        for (int y = 0; y < scaledHeight; y++) {
+            for (int x = 0; x < scaledWidth; x++) {
+                int rgb = scaledImage.getRGB(x, y);
                 
-                // Calculate adaptive local threshold for small text detection
-                int localSum = 0;
-                int localCount = 0;
-                int windowSize = 10; // Smaller window for fine details
+                // Convert to grayscale
+                int gray = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
                 
-                for (int wy = Math.max(0, y - windowSize); wy < Math.min(height, y + windowSize); wy++) {
-                    for (int wx = Math.max(0, x - windowSize); wx < Math.min(width, x + windowSize); wx++) {
-                        localSum += grayValues[wy][wx];
-                        localCount++;
-                    }
-                }
-                
-                int localAvg = localSum / localCount;
-                
-                // Enhanced contrast for small text and fine details
-                if (gray < localAvg - 25) {
-                    // Dark areas (text) - enhance significantly for small text
-                    gray = Math.max(0, gray - 60);
-                } else if (gray > localAvg + 25) {
-                    // Light areas (background) - brighten more
-                    gray = Math.min(255, gray + 50);
+                // Enhanced contrast specifically for interface text and numbers
+                if (gray < 120) {
+                    // Dark text/numbers - make much darker and sharper
+                    gray = Math.max(0, gray - 50);
+                } else if (gray > 200) {
+                    // Light background - make much lighter
+                    gray = 255;
                 } else {
-                    // Apply stronger contrast enhancement for fine details
-                    gray = Math.min(255, Math.max(0, (int) (2.5 * (gray - 128) + 128)));
-                }
-                
-                // Multi-directional edge enhancement for small text
-                if (x > 3 && x < width - 4 && y > 3 && y < height - 4) {
-                    int edgeStrength = 0;
-                    
-                    // Calculate edge strength in multiple directions for fine details
-                    edgeStrength += Math.abs(grayValues[y][x-3] - grayValues[y][x+3]); // Horizontal
-                    edgeStrength += Math.abs(grayValues[y-3][x] - grayValues[y+3][x]); // Vertical
-                    edgeStrength += Math.abs(grayValues[y-2][x-2] - grayValues[y+2][x+2]); // Diagonal
-                    edgeStrength += Math.abs(grayValues[y-2][x+2] - grayValues[y+2][x-2]); // Anti-diagonal
-                    
-                    if (edgeStrength > 100) {
-                        // Strong edge - likely small text or fine details
-                        if (gray < localAvg) {
-                            gray = Math.max(0, gray - 50); // Make dark edges much darker
-                        } else {
-                            gray = Math.min(255, gray + 50); // Make light edges lighter
-                        }
+                    // Mid-range - apply stronger contrast for better character definition
+                    if (gray < 160) {
+                        gray = Math.max(0, gray - 40); // Push towards black
+                    } else {
+                        gray = Math.min(255, gray + 60); // Push towards white
                     }
                 }
                 
@@ -742,6 +831,7 @@ public class TesseractWordExtractor {
             }
         }
         
+        LOGGER.info("Completed simple preprocessing - final image: " + scaledWidth + "x" + scaledHeight);
         return processedImage;
     }
     

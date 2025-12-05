@@ -1,0 +1,19 @@
+{
+  "extractionTimestamp" : 1764943694173,
+  "processingMode" : "ULTRA_HIGH_QUALITY",
+  "processingDPI" : 800,
+  "fileType" : "IMAGE",
+  "imageMetadata" : {
+    "width" : 624,
+    "height" : 293,
+    "format" : "PNG"
+  },
+  "totalWords" : 0,
+  "words" : [ ],
+  "summary" : {
+    "imageWidth" : 624,
+    "imageHeight" : 293,
+    "imageFormat" : "PNG",
+    "wordsExtracted" : 0
+  }
+}
