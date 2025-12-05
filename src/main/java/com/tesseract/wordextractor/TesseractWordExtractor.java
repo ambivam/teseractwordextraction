@@ -2,10 +2,8 @@ package com.tesseract.wordextractor;
 
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
-import net.sourceforge.tess4j.Word;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
 import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
@@ -13,9 +11,6 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDCheckBox;
 import org.apache.pdfbox.pdmodel.interactive.form.PDRadioButton;
 import org.apache.pdfbox.pdmodel.interactive.form.PDComboBox;
 import org.apache.pdfbox.pdmodel.interactive.form.PDListBox;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -23,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -30,15 +26,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Level;
+import java.util.stream.Stream;
 
 public class TesseractWordExtractor {
     private static final Logger LOGGER = Logger.getLogger(TesseractWordExtractor.class.getName());
     private static final String OUTPUT_DIR = "output";
+    private static final String DATA_DIR = "data";
+    
+    // Supported file extensions
+    private static final List<String> SUPPORTED_IMAGE_EXTENSIONS = Arrays.asList(
+        ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".gif", ".webp"
+    );
+    private static final List<String> SUPPORTED_PDF_EXTENSIONS = Arrays.asList(".pdf");
     
     // Performance modes - users can modify this for their needs
     public enum ProcessingMode {
@@ -128,24 +133,112 @@ public class TesseractWordExtractor {
     }
     
     public static void main(String[] args) {
-        if (args.length == 0) {
-            System.out.println("Usage: java TesseractWordExtractor <pdf-file-path>");
-            System.out.println("Example: java TesseractWordExtractor \"PDF for Automation Testing.pdf\"");
-            return;
-        }
-        
-        String pdfFilePath = args[0];
         TesseractWordExtractor extractor = new TesseractWordExtractor();
         
         try {
-            extractor.extractWordsFromPdf(pdfFilePath);
+            extractor.processDataFolder();
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error processing PDF: " + pdfFilePath, e);
-            System.err.println("Error processing PDF: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "Error processing data folder", e);
+            System.err.println("Error processing data folder: " + e.getMessage());
         }
     }
     
-    public void extractWordsFromPdf(String pdfFilePath) throws IOException, TesseractException {
+    /**
+     * Process all supported files in the data folder
+     */
+    public void processDataFolder() throws IOException {
+        Path dataPath = Paths.get(DATA_DIR);
+        
+        // Create data directory if it doesn't exist
+        if (!Files.exists(dataPath)) {
+            Files.createDirectories(dataPath);
+            System.out.println("Created data directory: " + DATA_DIR);
+            System.out.println("Please place your PDF and image files in the data folder and run again.");
+            return;
+        }
+        
+        // Create output directory if it doesn't exist
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        Files.createDirectories(outputDir);
+        
+        List<Path> filesToProcess = new ArrayList<>();
+        
+        // Find all supported files in data directory
+        try (Stream<Path> paths = Files.walk(dataPath)) {
+            paths.filter(Files::isRegularFile)
+                 .filter(this::isSupportedFile)
+                 .forEach(filesToProcess::add);
+        }
+        
+        if (filesToProcess.isEmpty()) {
+            System.out.println("No supported files found in data directory.");
+            System.out.println("Supported formats: PDF, JPG, JPEG, PNG, TIFF, TIF, BMP, GIF, WEBP");
+            return;
+        }
+        
+        System.out.println("Found " + filesToProcess.size() + " file(s) to process:");
+        for (Path file : filesToProcess) {
+            System.out.println("- " + file.getFileName());
+        }
+        System.out.println();
+        
+        int successCount = 0;
+        int errorCount = 0;
+        
+        for (Path filePath : filesToProcess) {
+            try {
+                System.out.println("Processing: " + filePath.getFileName());
+                processFile(filePath.toString());
+                successCount++;
+                System.out.println("✓ Successfully processed: " + filePath.getFileName());
+            } catch (Exception e) {
+                errorCount++;
+                LOGGER.log(Level.SEVERE, "Error processing file: " + filePath, e);
+                System.err.println("✗ Error processing " + filePath.getFileName() + ": " + e.getMessage());
+            }
+            System.out.println();
+        }
+        
+        System.out.println("=== PROCESSING SUMMARY ===");
+        System.out.println("Total files: " + filesToProcess.size());
+        System.out.println("Successfully processed: " + successCount);
+        System.out.println("Errors: " + errorCount);
+        System.out.println("Output directory: " + OUTPUT_DIR);
+    }
+    
+    /**
+     * Check if file has supported extension
+     */
+    private boolean isSupportedFile(Path filePath) {
+        String fileName = filePath.getFileName().toString().toLowerCase();
+        return SUPPORTED_IMAGE_EXTENSIONS.stream().anyMatch(fileName::endsWith) ||
+               SUPPORTED_PDF_EXTENSIONS.stream().anyMatch(fileName::endsWith);
+    }
+    
+    /**
+     * Process a single file (PDF or image)
+     */
+    public void processFile(String filePath) throws IOException, TesseractException {
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path)) {
+            throw new FileNotFoundException("File not found: " + filePath);
+        }
+        
+        String fileName = path.getFileName().toString().toLowerCase();
+        
+        if (SUPPORTED_PDF_EXTENSIONS.stream().anyMatch(fileName::endsWith)) {
+            extractFromPdf(filePath);
+        } else if (SUPPORTED_IMAGE_EXTENSIONS.stream().anyMatch(fileName::endsWith)) {
+            extractFromImage(filePath);
+        } else {
+            throw new IllegalArgumentException("Unsupported file format: " + fileName);
+        }
+    }
+    
+    /**
+     * Extract text from PDF file
+     */
+    public void extractFromPdf(String pdfFilePath) throws IOException, TesseractException {
         Path pdfPath = Paths.get(pdfFilePath);
         if (!Files.exists(pdfPath)) {
             throw new FileNotFoundException("PDF file not found: " + pdfFilePath);
@@ -228,11 +321,10 @@ public class TesseractWordExtractor {
         }
         
         // Generate comprehensive outputs
-        generateEnhancedTextOutput(baseFileName, allText.toString(), formData);
-        generateEnhancedJsonOutput(baseFileName, allWords, formData);
+        generateEnhancedTextOutput(baseFileName, allText.toString(), formData, "PDF");
+        generateEnhancedJsonOutput(baseFileName, allWords, formData, "PDF");
         
-        LOGGER.info("Extraction completed. Files saved in " + OUTPUT_DIR + " directory");
-        System.out.println("=== EXTRACTION COMPLETED SUCCESSFULLY ===");
+        LOGGER.info("PDF extraction completed. Files saved in " + OUTPUT_DIR + " directory");
         System.out.println("Output files:");
         System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.txt");
         System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.json");
@@ -242,46 +334,107 @@ public class TesseractWordExtractor {
         System.out.println("- Text extraction: PDFBox + Enhanced OCR");
     }
     
-    private void generateTextOutput(String baseFileName, String text) throws IOException {
-        Path textFile = Paths.get(OUTPUT_DIR, baseFileName + ".txt");
-        
-        try (BufferedWriter writer = Files.newBufferedWriter(textFile, StandardCharsets.UTF_8)) {
-            writer.write(text);
+    /**
+     * Extract text from image file
+     */
+    public void extractFromImage(String imageFilePath) throws IOException, TesseractException {
+        Path imagePath = Paths.get(imageFilePath);
+        if (!Files.exists(imagePath)) {
+            throw new FileNotFoundException("Image file not found: " + imageFilePath);
         }
         
-        LOGGER.info("Text output saved to: " + textFile);
+        String baseFileName = getBaseFileName(imageFilePath);
+        LOGGER.info("Processing Image: " + imageFilePath);
+        
+        // Create output directory if it doesn't exist
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        Files.createDirectories(outputDir);
+        
+        List<ExtractedWord> allWords = new ArrayList<>();
+        StringBuilder allText = new StringBuilder();
+        Map<String, Object> imageData = new HashMap<>();
+        
+        try {
+            // Load the image
+            BufferedImage originalImage = ImageIO.read(new File(imageFilePath));
+            if (originalImage == null) {
+                throw new IOException("Unable to read image file: " + imageFilePath);
+            }
+            
+            LOGGER.info("Image dimensions: " + originalImage.getWidth() + "x" + originalImage.getHeight());
+            
+            // Enhanced preprocessing for high-quality OCR
+            BufferedImage processedImage = preprocessImageForHighQualityOCR(originalImage);
+            
+            // Multiple OCR passes for comprehensive text extraction
+            StringBuilder imageTextBuilder = new StringBuilder();
+            
+            // Pass 1: Standard OCR with PSM 3 (auto detection)
+            try {
+                String imageText1 = performOCRWithConfig(processedImage, 3, "Auto Detection");
+                imageTextBuilder.append("=== OCR Pass 1 (Auto Detection) ===\n").append(imageText1).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 1 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 2: Form-optimized OCR with PSM 6 (uniform block)
+            try {
+                String imageText2 = performOCRWithConfig(processedImage, 6, "Form Fields");
+                imageTextBuilder.append("=== OCR Pass 2 (Form Fields) ===\n").append(imageText2).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 2 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 3: Single word detection
+            try {
+                String imageText3 = performOCRWithConfig(processedImage, 8, "Single Words/Dates");
+                imageTextBuilder.append("=== OCR Pass 3 (Single Words/Dates) ===\n").append(imageText3).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 3 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 4: Checkbox and symbol detection
+            try {
+                String imageText4 = performCheckboxOCR(processedImage);
+                imageTextBuilder.append("=== OCR Pass 4 (Checkboxes & Symbols) ===\n").append(imageText4).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 4 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 5: High-resolution small text detection
+            try {
+                String imageText5 = performSmallTextOCR(processedImage);
+                imageTextBuilder.append("=== OCR Pass 5 (Small Text Detection) ===\n").append(imageText5).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 5 OCR failed: " + e.getMessage());
+            }
+            
+            allText.append(imageTextBuilder.toString());
+            
+            // Store image metadata
+            imageData.put("imageWidth", originalImage.getWidth());
+            imageData.put("imageHeight", originalImage.getHeight());
+            imageData.put("imageFormat", getImageFormat(imageFilePath));
+            
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error processing image: " + imageFilePath, e);
+            throw e;
+        }
+        
+        // Generate comprehensive outputs
+        generateEnhancedTextOutput(baseFileName, allText.toString(), imageData, "IMAGE");
+        generateEnhancedJsonOutput(baseFileName, allWords, imageData, "IMAGE");
+        
+        LOGGER.info("Image extraction completed. Files saved in " + OUTPUT_DIR + " directory");
+        System.out.println("Output files:");
+        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.txt");
+        System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.json");
+        System.out.println("\nExtraction Summary:");
+        System.out.println("- Image dimensions: " + imageData.get("imageWidth") + "x" + imageData.get("imageHeight"));
+        System.out.println("- OCR processing: 5 passes completed");
+        System.out.println("- Text extraction: Enhanced Multi-Pass OCR");
     }
     
-    private void generateJsonOutput(String baseFileName, List<ExtractedWord> words) throws IOException {
-        Path jsonFile = Paths.get(OUTPUT_DIR, baseFileName + ".json");
-        
-        ObjectNode rootNode = objectMapper.createObjectNode();
-        rootNode.put("totalWords", words.size());
-        rootNode.put("extractionTimestamp", System.currentTimeMillis());
-        
-        ArrayNode wordsArray = objectMapper.createArrayNode();
-        
-        for (ExtractedWord word : words) {
-            ObjectNode wordNode = objectMapper.createObjectNode();
-            wordNode.put("text", word.getText());
-            wordNode.put("page", word.getPage());
-            wordNode.put("x", word.getX());
-            wordNode.put("y", word.getY());
-            wordNode.put("width", word.getWidth());
-            wordNode.put("height", word.getHeight());
-            wordNode.put("confidence", word.getConfidence());
-            
-            wordsArray.add(wordNode);
-        }
-        
-        rootNode.set("words", wordsArray);
-        
-        try (BufferedWriter writer = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(writer, rootNode);
-        }
-        
-        LOGGER.info("JSON output saved to: " + jsonFile);
-    }
     
     private String getBaseFileName(String filePath) {
         Path path = Paths.get(filePath);
@@ -509,687 +662,141 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Generate enhanced text output with form fields and OCR results
+     * Enhanced preprocessing specifically for high-quality image OCR
      */
-    private void generateEnhancedTextOutput(String baseFileName, String ocrText, Map<String, Object> formData) throws IOException {
-        Path textFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.txt");
+    private BufferedImage preprocessImageForHighQualityOCR(BufferedImage originalImage) {
+        int width = originalImage.getWidth();
+        int height = originalImage.getHeight();
         
-        try (BufferedWriter writer = Files.newBufferedWriter(textFile, StandardCharsets.UTF_8)) {
-            writer.write("=== COMPREHENSIVE PDF EXTRACTION RESULTS ===\n");
-            writer.write("Generated: " + new java.util.Date() + "\n");
-            writer.write("Processing Mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)\n\n");
-            
-            // Form fields section
-            @SuppressWarnings("unchecked")
-            Map<String, String> formFields = (Map<String, String>) formData.get("formFields");
-            writer.write("=== FORM FIELDS EXTRACTED (PDFBox) ===\n");
-            if (formFields != null && !formFields.isEmpty()) {
-                for (Map.Entry<String, String> entry : formFields.entrySet()) {
-                    writer.write("Field:\t" + entry.getKey() + "\n");
-                    writer.write("Value:\t" + entry.getValue() + "\n");
-                    writer.write("---\n");
-                }
-            } else {
-                writer.write("No interactive form fields found.\n");
-            }
-            writer.write("\n");
-            
-            // PDFBox text extraction
-            String extractedText = (String) formData.get("extractedText");
-            writer.write("=== TEXT CONTENT EXTRACTED (PDFBox Text Stripper) ===\n");
-            if (extractedText != null && !extractedText.trim().isEmpty()) {
-                String formattedText = formatTextWithTabs(extractedText);
-                writer.write(formattedText);
-            } else {
-                writer.write("No text content extracted by PDFBox.\n");
-            }
-            writer.write("\n\n");
-            
-            // OCR results
-            writer.write("=== ENHANCED OCR RESULTS (Tesseract Multi-Pass) ===\n");
-            String formattedOcrText = formatTextWithTabs(ocrText);
-            writer.write(formattedOcrText);
-        }
+        // Enhanced preprocessing for high-quality OCR with small text detection
+        BufferedImage processedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         
-        LOGGER.info("Enhanced text output saved to: " + textFile);
-    }
-    
-    /**
-     * Format text to use tabs after field labels instead of spaces
-     * Ensures field labels like "Número de Cliente" use spaces within the label but tabs after the colon
-     */
-    private String formatTextWithTabs(String text) {
-        if (text == null || text.trim().isEmpty()) {
-            return text;
-        }
+        // First pass: Convert to grayscale with optimized weights
+        int[][] grayValues = new int[height][width];
         
-        // Split text into lines for processing
-        String[] lines = text.split("\n");
-        StringBuilder formattedText = new StringBuilder();
-        
-        for (String line : lines) {
-            String formattedLine = formatLineWithTabs(line);
-            formattedText.append(formattedLine).append("\n");
-        }
-        
-        return formattedText.toString();
-    }
-    
-    /**
-     * Format a single line to use tabs after field labels
-     */
-    private String formatLineWithTabs(String line) {
-        if (line == null || line.trim().isEmpty()) {
-            return line;
-        }
-        
-        // Comprehensive list of field patterns from the PDF form
-        String[] fieldPatterns = {
-            "Número de Cliente",
-            "RFC con Homoclave", 
-            "Actividad",
-            "Razón Social",
-            "Firma Electrónica Avanzada",
-            "Tipo de Empresa",
-            "Actividad Tributaria",
-            "Fecha de Constitución",
-            "Estado de Constitución",
-            "País de Constitución",
-            "No\\. Acta Constitutiva",
-            "Sucursal",
-            "Cobertura",
-            "Sector",
-            "Correo Electrónico",
-            "Avenida / Calle",
-            "Número Exterior",
-            "Número Interior",
-            "Colonia / Población",
-            "Ciudad / Municipio / Alcaldía",
-            "Télefono",
-            "Extensión",
-            "Código Postal",
-            "Estado",
-            "País",
-            "Nombre del Representante Legal",
-            "RFC Representante Legal",
-            "Declara impuestos EEUU",
-            "Número ID Tributaria \\(TAX ID\\)",
-            "Exento Ley FATCA",
-            "Código Exención FATCA",
-            "Institución Financiera",
-            "Declara Impuestos en otro País",
-            "Propietario / Accionista / Dueño 25% o más",
-            "Tenencia Accionaria",
-            "Nombre del Participante",
-            "Tipo de Parte Asociada",
-            "% Participación",
-            "Monto Participación",
-            "Participación",
-            "Producto / Servicio",
-            "No\\. Cuenta",
-            "Número CLABE Interbancaria",
-            "Moneda",
-            "Número de RECA",
-            "Versión de Actualización",
-            "Fecha de Inscripción RECA",
-            "Fecha de Actualización RECA",
-            "Frecuencia Estado de Cuenta",
-            "Canal de Entrega Estado de Cuenta",
-            "Propósito de la Cuenta",
-            "Origen Depósito Inicial",
-            "Tercer Proveedor de Recursos",
-            "Origen Fondos Habituales",
-            "¿Protección de Cheques\\?",
-            "No\\. Contrato",
-            "Cuenta para Cobro de Comisiones",
-            "Usuarios Máximos",
-            "Grupos Máximos",
-            "Líneas Máximas",
-            "Roles Máximos",
-            "Servicios Transaccionales",
-            "CreCIMIENTO PyME",
-            "Fecha Inscripción al RECA",
-            "No\\. RECA Servicios",
-            "No\\. RECA CreCIMIENTO PyME",
-            "Servicios Transaccionales CIMA",
-            "CreCIMIENTO PyME CIMA",
-            "Nombre",
-            "Apellidos", 
-            "Dirección",
-            "Teléfono",
-            "Email",
-            "Fecha",
-            "DNI",
-            "NIF",
-            "Código",
-            "Referencia",
-            "Importe",
-            "Total",
-            "Subtotal",
-            "IVA",
-            "Descripción",
-            "Observaciones",
-            "Comentarios"
-        };
-        
-        String processedLine = line;
-        
-        // Handle specific multi-field header lines first
-        processedLine = handleMultiFieldHeaders(processedLine);
-        
-        // First, normalize internal spacing in field names (ensure single spaces within field names)
-        // This handles cases where field names have multiple spaces between words
-        processedLine = processedLine.replaceAll("([A-Za-zÀ-ÿ/()\\-\\.]+)\\s{2,}([A-Za-zÀ-ÿ/()\\-\\.]+)", "$1 $2");
-        
-        // Process each field pattern
-        for (String pattern : fieldPatterns) {
-            // Pattern 1: "Field Name:" followed by spaces and then value
-            // Replace with: "Field Name:" followed by tab and then value
-            String regexPattern = "(" + pattern.replace(" ", "\\s+") + ")\\s*:\\s+";
-            processedLine = processedLine.replaceAll(regexPattern, "$1:\t");
-            
-            // Pattern 2: Field name followed by multiple spaces (no colon) and then value
-            // This handles cases like "Número de Cliente    301352621"
-            String regexPatternNoColon = "(" + pattern.replace(" ", "\\s+") + ")\\s{2,}([A-Za-z0-9])";
-            processedLine = processedLine.replaceAll(regexPatternNoColon, "$1\t$2");
-        }
-        
-        // Generic pattern for any text followed by colon and spaces
-        // This catches other field patterns we might have missed
-        processedLine = processedLine.replaceAll("([A-Za-zÀ-ÿ\\s/()\\-\\.]+):\\s{2,}", "$1:\t");
-        
-        // Handle specific multi-field data lines
-        processedLine = handleDataValueLines(processedLine);
-        
-        return processedLine;
-    }
-    
-    /**
-     * Handle data value lines by inserting tabs between values
-     */
-    private String handleDataValueLines(String line) {
-        String processedLine = line;
-        
-        // Pattern 1: RFC + Client Number + Activity (like "TJT620428BX8 301352621 INDUSTRIA DE METALES NO FERROSOS")
-        if (processedLine.matches(".*\\b[A-Z0-9]{12,}\\s+\\d{9}\\s+[A-Z\\s]+.*")) {
-            String[] parts = processedLine.trim().split("\\s+", 3);
-            if (parts.length >= 3) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2];
-            }
-        }
-        
-        // Pattern 2: Date + Location + Country + Number (like "28/04/1962 CIUDAD DE MEXICO MEXICO 13625")
-        else if (processedLine.matches(".*\\d{2}/\\d{2}/\\d{4}\\s+[A-Z\\s]+\\s+[A-Z]+\\s+\\d+.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4) {
-                // Date, then combine location words until we hit a single word country, then number
-                StringBuilder result = new StringBuilder();
-                result.append(parts[0]); // Date
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = originalImage.getRGB(x, y);
+                int red = (rgb >> 16) & 0xFF;
+                int green = (rgb >> 8) & 0xFF;
+                int blue = rgb & 0xFF;
                 
-                int i = 1;
-                StringBuilder location = new StringBuilder();
-                // Collect location words (usually multiple words like "CIUDAD DE MEXICO")
-                while (i < parts.length - 2) {
-                    if (location.length() > 0) location.append(" ");
-                    location.append(parts[i]);
-                    i++;
-                }
-                result.append("\t").append(location.toString());
-                result.append("\t").append(parts[parts.length - 2]); // Country
-                result.append("\t").append(parts[parts.length - 1]); // Number
-                processedLine = result.toString();
+                // Enhanced grayscale conversion for small text
+                int gray = (int) (0.299 * red + 0.587 * green + 0.114 * blue);
+                grayValues[y][x] = gray;
             }
         }
         
-        // Pattern 3: Multiple numeric values (like "2 10 100 10")
-        else if (processedLine.matches("^\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\d+\\s*$")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            processedLine = String.join("\t", parts);
-        }
-        
-        // Pattern 4: Mixed alphanumeric values (like "301352621 N/A")
-        else if (processedLine.matches(".*\\b\\d{9}\\s+N/A.*")) {
-            processedLine = processedLine.replaceAll("(\\d{9})\\s+(N/A)", "$1\t$2");
-        }
-        
-        // Pattern 5: Name + Type + Percentage + Amount + Type (like "PAMELA LEYVA RAMIREZ Socio Accionista PF 100 $200,000.00 Directo")
-        else if (processedLine.matches(".*[A-Z]+\\s+[A-Z]+\\s+RAMIREZ\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 7) {
-                StringBuilder result = new StringBuilder();
-                // Name (first 3 parts)
-                result.append(parts[0]).append(" ").append(parts[1]).append(" ").append(parts[2]);
-                result.append("\t");
-                // Type (next 2-3 parts)
-                result.append(parts[3]).append(" ").append(parts[4]);
-                if (parts.length > 7 && parts[5].equals("PF")) {
-                    result.append(" ").append(parts[5]);
-                    result.append("\t").append(parts[6]); // Percentage
-                    result.append("\t").append(parts[7]); // Amount
-                    if (parts.length > 8) {
-                        result.append("\t").append(parts[8]); // Type
-                    }
-                } else {
-                    result.append("\t").append(parts[5]); // Percentage
-                    result.append("\t").append(parts[6]); // Amount
-                    if (parts.length > 7) {
-                        result.append("\t").append(parts[7]); // Type
+        // Second pass: Advanced adaptive processing for small text
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = grayValues[y][x];
+                
+                // Calculate adaptive local threshold for small text detection
+                int localSum = 0;
+                int localCount = 0;
+                int windowSize = 10; // Smaller window for fine details
+                
+                for (int wy = Math.max(0, y - windowSize); wy < Math.min(height, y + windowSize); wy++) {
+                    for (int wx = Math.max(0, x - windowSize); wx < Math.min(width, x + windowSize); wx++) {
+                        localSum += grayValues[wy][wx];
+                        localCount++;
                     }
                 }
-                processedLine = result.toString();
-            }
-        }
-        
-        // Pattern 6: RECA codes with dates (like "0319-999-038191/03-02918-1024 PMORALES-303 24/10/2024 25/11/2024")
-        else if (processedLine.matches(".*\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
-            }
-        }
-        
-        // Pattern 7: Service codes with dates (like "0319-434-038196/05-02775-1024 15/10/2024 0319-003-021810/07-02848-1024 18/10/2024")
-        else if (processedLine.matches(".*\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+\\d{2}/\\d{2}/\\d{4}\\s+\\d{4}-\\d{3}-\\d{6}/\\d{2}-\\d{5}-\\d{4}\\s+\\d{2}/\\d{2}/\\d{4}.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
-            }
-        }
-        
-        // Pattern 8: Phone + Extension + User + Type (like "5523457890 N/A X Administrador de Sistema")
-        else if (processedLine.matches(".*\\d{10}\\s+N/A\\s+X\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+", 4);
-            if (parts.length >= 4) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
-            }
-        }
-        
-        // Pattern 9: Phone + Extension + User + Type (with extension number like "5598763457 1234 X Administrador")
-        else if (processedLine.matches(".*\\d{10}\\s+\\d{1,4}\\s+X\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+", 4);
-            if (parts.length >= 4) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
-            }
-        }
-        
-        // Pattern 10: ID + Role + Language + Currency (like "001 Super Usuario Español Peso Mexicano")
-        else if (processedLine.matches(".*\\d{3}\\s+Super\\s+Usuario\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+", 4);
-            if (parts.length >= 4) {
-                // Combine "Super Usuario" as one field
-                processedLine = parts[0] + "\t" + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + (parts.length > 4 ? String.join(" ", java.util.Arrays.copyOfRange(parts, 4, parts.length)) : "");
-            }
-        }
-        
-        // Pattern 11: Contract + Status + Type + Account (like "301352621 Alta Cheques N/A")
-        else if (processedLine.matches(".*\\d{9}\\s+Alta\\s+Cheques\\s+N/A.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3];
-            }
-        }
-        
-        // Pattern 12: Account type + Account number + Currency (like "Recaudación N/A MXN")
-        else if (processedLine.matches(".*\\b(Recaudación|Cobro de Comisiones|Cheques Devueltos SBC)\\s+N/A\\s+MXN.*")) {
-            String[] parts = processedLine.trim().split("\\s+", 3);
-            if (parts.length >= 3) {
-                if (parts[0].equals("Cheques") && parts[1].equals("Devueltos") && parts.length >= 5) {
-                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + parts[4];
-                } else if (parts[0].equals("Cobro") && parts[1].equals("de") && parts.length >= 5) {
-                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + "\t" + parts[3] + "\t" + parts[4];
+                
+                int localAvg = localSum / localCount;
+                
+                // Enhanced contrast for small text and fine details
+                if (gray < localAvg - 25) {
+                    // Dark areas (text) - enhance significantly for small text
+                    gray = Math.max(0, gray - 60);
+                } else if (gray > localAvg + 25) {
+                    // Light areas (background) - brighten more
+                    gray = Math.min(255, gray + 50);
                 } else {
-                    processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2];
+                    // Apply stronger contrast enhancement for fine details
+                    gray = Math.min(255, Math.max(0, (int) (2.5 * (gray - 128) + 128)));
                 }
-            }
-        }
-        
-        // Pattern 13: Payment method data (like "Efectivo Sí 1.00 60,000.00 N/A N/A")
-        else if (processedLine.matches(".*\\b(Efectivo|Cheques Scotiabank|Cheques Otros Bancos|Pagos Salvo Buen Cobro)\\s+(Sí|No)\\s+.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 6) {
-                if (parts[0].equals("Cheques") && (parts[1].equals("Scotiabank") || parts[1].equals("Otros"))) {
-                    processedLine = parts[0] + " " + parts[1] + (parts.length > 2 && parts[2].equals("Bancos") ? " " + parts[2] : "") + "\t" + 
-                                  parts[parts[1].equals("Scotiabank") ? 2 : 3] + "\t" + 
-                                  parts[parts[1].equals("Scotiabank") ? 3 : 4] + "\t" + 
-                                  parts[parts[1].equals("Scotiabank") ? 4 : 5] + "\t" + 
-                                  parts[parts[1].equals("Scotiabank") ? 5 : 6] + "\t" + 
-                                  (parts.length > (parts[1].equals("Scotiabank") ? 6 : 7) ? parts[parts[1].equals("Scotiabank") ? 6 : 7] : "");
-                } else if (parts[0].equals("Pagos") && parts[1].equals("Salvo")) {
-                    processedLine = parts[0] + " " + parts[1] + " " + parts[2] + " " + parts[3] + "\t" + parts[4] + "\t" + parts[5] + "\t" + parts[6] + "\t" + parts[7] + "\t" + parts[8];
-                } else {
-                    processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3] + "\t" + parts[4] + "\t" + parts[5];
-                }
-            }
-        }
-        
-        // Pattern 14: Reference data (like "RFC 12 13 RFC N/A")
-        else if (processedLine.matches(".*\\bRFC\\s+\\d{1,2}\\s+\\d{1,2}\\s+RFC\\s+N/A.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 5) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + "\t" + parts[3] + "\t" + parts[4];
-            }
-        }
-        
-        // Pattern 15: Package configuration (like "1 Mensual Cheques 8 Posiciones Si Si")
-        else if (processedLine.matches(".*\\d+\\s+Mensual\\s+Cheques\\s+\\d+\\s+Posiciones\\s+Si\\s+Si.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 6) {
-                processedLine = parts[0] + "\t" + parts[1] + "\t" + parts[2] + " " + parts[3] + " " + parts[4] + "\t" + parts[5] + "\t" + parts[6];
-            }
-        }
-        
-        // Pattern 16: Company name + RFC (like "PAMELA LEYVA RAMIREZ LERP591120XRC")
-        else if (processedLine.matches(".*\\b[A-Z]+\\s+[A-Z]+\\s+[A-Z]+\\s+[A-Z0-9]{12,13}\\b.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4) {
-                // Separate name from RFC
-                String name = String.join(" ", java.util.Arrays.copyOfRange(parts, 0, parts.length - 1));
-                String rfc = parts[parts.length - 1];
-                processedLine = "\t" + name + "\t" + rfc;
-            }
-        }
-        
-        // Pattern 17: Name under header (like "PAMELA LEYVA RAMIREZ" should be tabbed under "Nombre")
-        // This handles cases where a person's name appears as data under a header
-        else if (processedLine.matches(".*\\b[A-Z]+\\s+[A-Z]+\\s+[A-Z]+\\b.*") && 
-                 !processedLine.contains("EMPRESA") && 
-                 !processedLine.contains("BANCO") &&
-                 !processedLine.contains("SCOTIABANK") &&
-                 !processedLine.contains("SOLICITUD") &&
-                 !processedLine.contains("REGIMEN") &&
-                 !processedLine.contains("SIMPLIFICADO") &&
-                 processedLine.trim().split("\\s+").length >= 2 &&
-                 processedLine.trim().split("\\s+").length <= 4) {
-            
-            // This is likely a person's name that should be tabbed under a header
-            processedLine = "\t" + processedLine.trim();
-        }
-        
-        // Pattern 18: Company type data (like "PRIVADA REGIMEN SIMPLIFICADO DE CONFIANZA")
-        else if (processedLine.matches(".*\\bPRIVADA\\s+REGIMEN\\s+SIMPLIFICADO\\s+DE\\s+CONFIANZA\\b.*")) {
-            processedLine = processedLine.replace("PRIVADA REGIMEN SIMPLIFICADO DE CONFIANZA", "PRIVADA\tREGIMEN\tSIMPLIFICADO\tDE\tCONFIANZA");
-        }
-        
-        // Pattern 19: Address + Phone data (like "BOSQUES DE SAN MATEO TOLUCA 5582331936 0")
-        else if (processedLine.matches(".*\\b[A-Z]+\\s+DE\\s+SAN\\s+[A-Z]+\\s+[A-Z]+\\s+\\d{10}\\s+\\d+.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 7) {
-                // Find where the phone number starts
-                for (int i = 0; i < parts.length; i++) {
-                    if (parts[i].matches("\\d{10}")) {
-                        String address = String.join(" ", java.util.Arrays.copyOfRange(parts, 0, i));
-                        processedLine = address + "\t" + parts[i] + "\t" + (i + 1 < parts.length ? parts[i + 1] : "");
-                        break;
+                
+                // Multi-directional edge enhancement for small text
+                if (x > 3 && x < width - 4 && y > 3 && y < height - 4) {
+                    int edgeStrength = 0;
+                    
+                    // Calculate edge strength in multiple directions for fine details
+                    edgeStrength += Math.abs(grayValues[y][x-3] - grayValues[y][x+3]); // Horizontal
+                    edgeStrength += Math.abs(grayValues[y-3][x] - grayValues[y+3][x]); // Vertical
+                    edgeStrength += Math.abs(grayValues[y-2][x-2] - grayValues[y+2][x+2]); // Diagonal
+                    edgeStrength += Math.abs(grayValues[y-2][x+2] - grayValues[y+2][x-2]); // Anti-diagonal
+                    
+                    if (edgeStrength > 100) {
+                        // Strong edge - likely small text or fine details
+                        if (gray < localAvg) {
+                            gray = Math.max(0, gray - 50); // Make dark edges much darker
+                        } else {
+                            gray = Math.min(255, gray + 50); // Make light edges lighter
+                        }
                     }
                 }
+                
+                processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
             }
         }
         
-        // Pattern 20: Company name + Currency (like "TAMALES JESECA HACES MXN")
-        else if (processedLine.matches(".*\\b[A-Z]+\\s+[A-Z]+\\s+[A-Z]+\\s+MXN\\b.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 4 && parts[parts.length - 1].equals("MXN")) {
-                String name = String.join(" ", java.util.Arrays.copyOfRange(parts, 0, parts.length - 1));
-                processedLine = "\t" + name + "\t" + "MXN";
-            }
-        }
-        
-        // Pattern 21: Multiple X marks (like "X X X" or "X X")
-        else if (processedLine.matches(".*\\bX\\s+X\\s+X\\b.*")) {
-            processedLine = processedLine.replace("X X X", "\tX\tX\tX");
-        }
-        else if (processedLine.matches(".*\\bX\\s+X\\b.*") && !processedLine.contains("\t")) {
-            processedLine = processedLine.replace("X X", "\tX\tX");
-        }
-        
-        // Pattern 22: Currency + X marks (like "MXN X X")
-        else if (processedLine.matches(".*\\bMXN\\s+X\\s+X\\b.*")) {
-            processedLine = processedLine.replace("MXN X X", "\tMXN\tX\tX");
-        }
-        
-        // Pattern 25: Leading tab + X marks (like "	X	X X" should be "	X	X	X")
-        else if (processedLine.matches(".*\\t.*X\\s+X.*")) {
-            processedLine = processedLine.replaceAll("(\\t.*?)X\\s+X", "$1X\tX");
-        }
-        
-        // Pattern 23: Multiple N/A values (like "N/A N/A")
-        else if (processedLine.matches(".*\\bN/A\\s+N/A\\b.*")) {
-            processedLine = processedLine.replace("N/A N/A", "N/A\tN/A");
-        }
-        
-        // Pattern 24: Account service data (like "2406 - CUENTA UNICA CIMA (PM) N/A N/A MXN")
-        else if (processedLine.matches(".*\\d{4}\\s+-\\s+CUENTA\\s+UNICA\\s+CIMA.*")) {
-            String[] parts = processedLine.trim().split("\\s+");
-            if (parts.length >= 8) {
-                processedLine = parts[0] + " - " + parts[2] + " " + parts[3] + " " + parts[4] + " " + parts[5] + "\t" + 
-                              parts[6] + "\t" + parts[7] + "\t" + (parts.length > 8 ? parts[8] : "");
-            }
-        }
-        
-        // Pattern 17: Generic multi-value lines with mixed content
-        // This catches lines with multiple distinct values separated by spaces
-        else if (processedLine.matches(".*\\w+\\s+\\w+\\s+\\w+.*") && 
-                 !processedLine.matches(".*[a-z].*") && // Skip lines with lowercase (likely sentences)
-                 !processedLine.startsWith("=") && // Skip section headers
-                 !processedLine.matches(".*\\d{1,2}\\..*") && // Skip numbered sections
-                 !processedLine.contains("@") && // Skip email addresses
-                 !processedLine.matches(".*\\b(de|la|el|en|por|para|con|del|al)\\b.*") && // Skip Spanish articles/prepositions
-                 !processedLine.matches(".*\\b[A-Z]+\\s+[A-Z]+\\s+[A-Z]+\\b.*") && // Skip names (handled above)
-                 processedLine.trim().split("\\s+").length >= 3) {
-            
-            String[] parts = processedLine.trim().split("\\s+");
-            // Only apply if we have distinct values (not a sentence)
-            boolean hasDistinctValues = false;
-            for (String part : parts) {
-                if (part.matches("\\d+") || part.matches("[A-Z]{2,}") || part.matches(".*[/$%].*") || part.equals("N/A") || part.equals("X") || part.equals("Si") || part.equals("No")) {
-                    hasDistinctValues = true;
-                    break;
-                }
-            }
-            
-            if (hasDistinctValues && parts.length <= 8) { // Increased limit for more complex tables
-                processedLine = String.join("\t", parts);
-            }
-        }
-        
-        return processedLine;
+        return processedImage;
     }
     
     /**
-     * Handle multi-field header lines by inserting tabs between field labels
+     * Specialized OCR for small text detection
      */
-    private String handleMultiFieldHeaders(String line) {
-        // Define specific multi-field header patterns that need tab separation
-        String[][] multiFieldPatterns = {
-            // Pattern: original line -> formatted line with tabs
-            {"RFC con Homoclave Número de Cliente Actividad", "RFC con Homoclave\tNúmero de Cliente\tActividad"},
-            {"Firma Electrónica Avanzada Tipo de Empresa Actividad Tributaria", "Firma Electrónica Avanzada\tTipo de Empresa\tActividad Tributaria"},
-            {"Fecha de Constitución Estado de Constitución País de Constitución No\\. Acta Constitutiva", "Fecha de Constitución\tEstado de Constitución\tPaís de Constitución\tNo. Acta Constitutiva"},
-            {"Sucursal Cobertura Sector", "Sucursal\tCobertura\tSector"},
-            {"Avenida / Calle Número Exterior Número Interior", "Avenida / Calle\tNúmero Exterior\tNúmero Interior"},
-            {"Colonia / Población Ciudad / Municipio / Alcaldía Télefono Extensión", "Colonia / Población\tCiudad / Municipio / Alcaldía\tTélefono\tExtensión"},
-            {"Código Postal Estado País", "Código Postal\tEstado\tPaís"},
-            {"Nombre del Representante Legal RFC Representante Legal", "Nombre del Representante Legal\tRFC Representante Legal"},
-            {"Declara impuestos EEUU Número ID Tributaria \\(TAX ID\\)", "Declara impuestos EEUU\tNúmero ID Tributaria (TAX ID)"},
-            {"Exento Ley FATCA Código Exención FATCA", "Exento Ley FATCA\tCódigo Exención FATCA"},
-            {"Institución Financiera Declara Impuestos en otro País", "Institución Financiera\tDeclara Impuestos en otro País"},
-            {"Propietario / Accionista / Dueño 25% o más Tenencia Accionaria", "Propietario / Accionista / Dueño 25% o más\tTenencia Accionaria"},
-            {"Nombre del Participante Tipo de Parte Asociada % Participación Monto Participación Participación", "Nombre del Participante\tTipo de Parte Asociada\t% Participación\tMonto Participación\tParticipación"},
-            {"Producto / Servicio No\\. Cuenta Número CLABE Interbancaria Moneda", "Producto / Servicio\tNo. Cuenta\tNúmero CLABE Interbancaria\tMoneda"},
-            {"Número de RECA Versión de Actualización Fecha de Inscripción RECA Fecha de Actualización RECA", "Número de RECA\tVersión de Actualización\tFecha de Inscripción RECA\tFecha de Actualización RECA"},
-            {"Frecuencia Estado de Cuenta Canal de Entrega Estado de Cuenta", "Frecuencia Estado de Cuenta\tCanal de Entrega Estado de Cuenta"},
-            {"Propósito de la Cuenta Origen Depósito Inicial Tercer Proveedor de Recursos", "Propósito de la Cuenta\tOrigen Depósito Inicial\tTercer Proveedor de Recursos"},
-            {"Origen Fondos Habituales ¿Protección de Cheques\\?", "Origen Fondos Habituales\t¿Protección de Cheques?"},
-            {"No\\. Contrato Cuenta para Cobro de Comisiones", "No. Contrato\tCuenta para Cobro de Comisiones"},
-            {"Usuarios Máximos Grupos Máximos Líneas Máximas Roles Máximos", "Usuarios Máximos\tGrupos Máximos\tLíneas Máximas\tRoles Máximos"},
-            {"No\\. RECA Servicios Fecha Inscripción al RECA No\\. RECA CreCIMIENTO PyME Fecha Inscripción al RECA", "No. RECA Servicios\tFecha Inscripción al RECA\tNo. RECA CreCIMIENTO PyME\tFecha Inscripción al RECA"},
-            {"Transaccionales Servicios Transaccionales CIMA CreCIMIENTO PyME CIMA", "Transaccionales\tServicios Transaccionales CIMA\tCreCIMIENTO PyME CIMA"},
-            // Additional patterns for other pages
-            {"Servicios Disponibles", "Servicios Disponibles"},
-            {"CONSULTAS PAGOS CHEQUES ADMINISTRACIÓN", "CONSULTAS\tPAGOS\tCHEQUES\tADMINISTRACIÓN"},
-            // Form structure patterns
-            {"Periodicidad del Formato \\(Layout Genera Archivo SIN Cuenta de Cargo de Comisiones del", "Periodicidad del Formato (Layout\tGenera Archivo SIN\tCuenta de Cargo de Comisiones del"},
-            {"Paquete Reporte Mensual Archivo Movimientos Paquete", "Paquete\tReporte Mensual\tArchivo Movimientos\tPaquete"},
-            {"Cuenta Moneda", "Cuenta\tMoneda"},
-            {"N/A MXN", "N/A\tMXN"},
-            // Package and report patterns
-            {"Medio de Envío Electrónico", "Medio de Envío Electrónico"},
-            {"Paquete", "Paquete"},
-            {"Cuenta N/A Moneda MXN", "Cuenta\tN/A\tMoneda\tMXN"},
-            {"Pagos en Ventanilla \\* X Pagos Referenciados IMSS X Solicitud de Chequeras X Asignación de Cuentas - Usuarios", "Pagos en Ventanilla *\tX Pagos Referenciados IMSS\tX Solicitud de Chequeras\tX Asignación de Cuentas - Usuarios"},
-            {"X Saldos General X Traspasos Mismo Banco X Suspensión Cheques X Autorizaciones Doble Firma", "X Saldos General\tX Traspasos Mismo Banco\tX Suspensión Cheques\tX Autorizaciones Doble Firma"},
-            {"X Saldos por Producto X Traspasos Otros Bancos X Protección de Cuentas X Preferencias Solicitante", "X Saldos por Producto\tX Traspasos Otros Bancos\tX Protección de Cuentas\tX Preferencias Solicitante"},
-            {"X Saldos por Grupo X Traspasos Internacionales X Protección de Cheques X Preferencias Usuario", "X Saldos por Grupo\tX Traspasos Internacionales\tX Protección de Cheques\tX Preferencias Usuario"},
-            {"X Tasas Pago de Facturas \\* TESORERÍA X Mantenimiento de Cuentas", "X Tasas\tPago de Facturas *\tTESORERÍA\tX Mantenimiento de Cuentas"},
-            {"X Metales y Divisas X Pago de Servicios Consulta de Saldos X Grupos", "X Metales y Divisas\tX Pago de Servicios\tConsulta de Saldos\tX Grupos"},
-            {"X Cobranza sin Recibo X Contribuciones SAT Mantenimiento a Límites X Roles", "X Cobranza sin Recibo\tX Contribuciones SAT\tMantenimiento a Límites\tX Roles"},
-            {"X Cobranza con Recibo X Cobranza Domiciliada Consulta de Límites X Usuarios", "X Cobranza con Recibo\tX Cobranza Domiciliada\tConsulta de Límites\tX Usuarios"},
-            {"X Cobranza Referenciada X Contribuciones Gubernamentales Administración e-Tesorero X Activación de e-Llave", "X Cobranza Referenciada\tX Contribuciones Gubernamentales\tAdministración e-Tesorero\tX Activación de e-Llave"},
-            // User management patterns
-            {"Teléfono Extensión Usuario Automático Tipo de Usuario", "Teléfono\tExtensión\tUsuario Automático\tTipo de Usuario"},
-            {"ID de Rol Rol Idioma Moneda", "ID de Rol\tRol\tIdioma\tMoneda"},
-            // Account and service patterns from pages 2-6
-            {"Número de Contrato Estado Tipo de Cuenta Número Cuenta", "Número de Contrato\tEstado\tTipo de Cuenta\tNúmero Cuenta"},
-            {"Nombre del Titular de la Cuenta Moneda", "Nombre del Titular de la Cuenta\tMoneda"},
-            {"Cargo Abono Consulta Opciones", "Cargo\tAbono\tConsulta\tOpciones"},
-            {"Individual Si Si N/A", "Individual\tSi\tSi\tN/A"},
-            {"Nueva Alta Envío al Banco Recepción del Banco", "Nueva Alta\tEnvío al Banco\tRecepción del Banco"},
-            {"Tipo de Formato Layout Número de Cuenta Moneda Recepción del Banco", "Tipo de Formato Layout\tNúmero de Cuenta\tMoneda\tRecepción del Banco"},
-            {"Cheques 8 Posiciones MXN X", "Cheques 8 Posiciones\tMXN\tX"},
-            {"Número de Cuenta Moneda Envío al Banco Recepción del Banco", "Número de Cuenta\tMoneda\tEnvío al Banco\tRecepción del Banco"},
-            {"No\\. de Banca por Internet Cuenta de Cobro de Comisión Número de Cuenta Moneda", "No. de Banca por Internet\tCuenta de Cobro de Comisión\tNúmero de Cuenta\tMoneda"},
-            {"Tipo de Cálculo Tipo de Referencia Validación Dígito Verificador Longitud Mínima Longitud Máxima Validación SPEI/SPID", "Tipo de Cálculo\tTipo de Referencia\tValidación Dígito Verificador\tLongitud Mínima\tLongitud Máxima\tValidación SPEI/SPID"},
-            {"Base 10 Numérica Si 2 10 Si", "Base 10\tNumérica\tSi\t2\t10\tSi"},
-            {"No\\. Contrato Tipo de Formato a Utilizar Moneda Acepta Pagos Duplicados", "No. Contrato\tTipo de Formato a Utilizar\tMoneda\tAcepta Pagos Duplicados"},
-            {"301352621 Con Recibo MXN No", "301352621\tCon Recibo\tMXN\tNo"},
-            {"Título que se mostrará en el Comprobante de Pago Medios por los que se recibirán los Pagos", "Título que se mostrará en el Comprobante de Pago\tMedios por los que se recibirán los Pagos"},
-            {"Tamales lleve lleve Sucursal y Banca por Internet", "Tamales lleve lleve\tSucursal y Banca por Internet"},
-            {"Recepción del Recibo después del Vencimiento para su aceptación Tasa o Monto Fijo para su Aceptación", "Recepción del Recibo después del Vencimiento para su aceptación\tTasa o Monto Fijo para su Aceptación"},
-            {"Se aceptan pero no se calcula interés 5 0\\.00", "Se aceptan pero no se calcula interés\t5\t0.00"},
-            {"Nombre de las Cantidades Adicionales Se calcula IVA de los Intereses", "Nombre de las Cantidades Adicionales\tSe calcula IVA de los Intereses"},
-            {"Intereses Moratorios No", "Intereses Moratorios\tNo"},
-            {"Se Aplican Descuentos por Pronto Pago al Pago Tasa o Monto Fijo del Descuento", "Se Aplican Descuentos por Pronto Pago al Pago\tTasa o Monto Fijo del Descuento"},
-            {"Sí - Por días de anticipo \\(Monto fijo\\) 5 15\\.00", "Sí - Por días de anticipo (Monto fijo)\t5\t15.00"},
-            {"Genera Cortes Intradía \\(envío del archivo al solicitante\\) Periodos para Realizar la Entrega de Información", "Genera Cortes Intradía (envío del archivo al solicitante)\tPeriodos para Realizar la Entrega de Información"},
-            {"Sí - Entrega Información a partir del Corte 45 min", "Sí - Entrega Información a partir del Corte\t45 min"},
-            {"Tipo de Cuenta No\\. Cuenta Moneda", "Tipo de Cuenta\tNo. Cuenta\tMoneda"},
-            {"Recaudación N/A MXN", "Recaudación\tN/A\tMXN"},
-            {"Cobro de Comisiones N/A MXN", "Cobro de Comisiones\tN/A\tMXN"},
-            {"Cheques Devueltos SBC N/A MXN", "Cheques Devueltos SBC\tN/A\tMXN"},
-            {"Forma de Pago Aceptar Monto Mínimo Monto Máximo antes del Vencimiento después del Vencimiento", "Forma de Pago\tAceptar\tMonto Mínimo\tMonto Máximo\tantes del Vencimiento\tdespués del Vencimiento"},
-            {"Efectivo Sí 1\\.00 60,000\\.00 N/A N/A", "Efectivo\tSí\t1.00\t60,000.00\tN/A\tN/A"},
-            {"Cheques Scotiabank Sí 1\\.00 60,000\\.00 N/A N/A", "Cheques Scotiabank\tSí\t1.00\t60,000.00\tN/A\tN/A"},
-            {"Cheques Otros Bancos No N/A N/A N/A N/A", "Cheques Otros Bancos\tNo\tN/A\tN/A\tN/A\tN/A"},
-            {"Pagos Salvo Buen Cobro No N/A N/A N/A N/A", "Pagos Salvo Buen Cobro\tNo\tN/A\tN/A\tN/A\tN/A"},
-            {"Título de Referencia Longitud Mínima Longitud Máxima Formato de la Referencia Formato Fecha", "Título de Referencia\tLongitud Mínima\tLongitud Máxima\tFormato de la Referencia\tFormato Fecha"},
-            {"RFC 12 13 RFC N/A", "RFC\t12\t13\tRFC\tN/A"},
-            {"Orden de la Referencia Orden de la Referencia Validación del Dígito Tipo de Cálculo de los", "Orden de la Referencia\tOrden de la Referencia\tValidación del Dígito\tTipo de Cálculo de los"},
-            {"en el Archivo de Salida en el Estado de Cuenta Verificador del RFC Dígitos Verificadores Número Validación Especial", "en el Archivo de Salida\ten el Estado de Cuenta\tVerificador del RFC\tDígitos Verificadores Número\tValidación Especial"},
-            {"1 Primer Lugar Sí Modulo 10 N/A", "1\tPrimer Lugar\tSí\tModulo 10\tN/A"},
-            {"No\\. Contrato SEL No\\. Servicio", "No. Contrato SEL\tNo. Servicio"},
-            {"Scotia en Línea Número de Servicio Host to Host Número de Servicio \\(Sólo sí aplica\\)", "Scotia en Línea Número de Servicio\tHost to Host Número de Servicio (Sólo sí aplica)"},
-            {"301352621 N/A", "301352621\tN/A"},
-            {"Mismo día Día siguiente X Ambos", "Mismo día\tDía siguiente\tX\tAmbos"},
-            {"Cuenta de Cargo para la comisión: MXN", "Cuenta de Cargo para la comisión:\tMXN"},
-            {"Cuenta de Cargo para la Dispersión: MXN", "Cuenta de Cargo para la Dispersión:\tMXN"},
-            {"Cuenta de Abono para las devoluciones de los pagos no efectuados a las cuentas de los Beneficiarios: MXN", "Cuenta de Abono para las devoluciones de los pagos no efectuados a las cuentas de los Beneficiarios:\tMXN"},
-            {"1 Mensual Cheques 8 Posiciones Si Si", "1\tMensual\tCheques 8 Posiciones\tSi\tSi"},
-            {"VI\\. ACEPTACIÓN DE CONDICIONES Y DECLARACIONES", "VI.\tACEPTACIÓN\tDE\tCONDICIONES\tY\tDECLARACIONES"},
-            // Legal representative patterns
-            {"Representante Legal Firma Nombre", "Representante Legal Firma\tNombre"},
-            {"Nombre", "Nombre"},
-            {"Juan Pérez Robles", "\tJuan Pérez Robles"},
-            {"Lidia Martínez González", "\tLidia Martínez González"},
-            {"PAMELA LEYVA RAMIREZ", "\tPAMELA LEYVA RAMIREZ"},
-            // Additional discrepancy fixes
-            {"Declara impuestos EEUU Número ID Tributaria \\(TAX ID\\)", "Declara impuestos EEUU\tNúmero ID Tributaria (TAX ID)"},
-            {"No N/A", "No\tN/A"},
-            {"Exento Ley FATCA Código Exención FATCA", "Exento Ley FATCA\tCódigo Exención FATCA"},
-            {"Institución Financiera Declara Impuestos en otro País", "Institución Financiera\tDeclara Impuestos en otro País"},
-            {"NO No", "NO\tNo"},
-            {"Propietario / Accionista / Dueño 25% o más Tenencia Accionaria", "Propietario / Accionista / Dueño 25% o más\tTenencia Accionaria"},
-            {"Mensual Banca Electrónica", "Mensual\tBanca Electrónica"},
-            {"Pago a Proveedores Otros No", "Pago a Proveedores\tOtros\tNo"},
-            {"Recursos de la empresa por venta de productos Si", "Recursos de la empresa por venta de productos\tSi"},
-            {"Nueva Alta Recepción del Banco", "Nueva Alta\tRecepción del Banco"},
-            {"X X", "X\tX"}
-        };
+    private String performSmallTextOCR(BufferedImage image) throws TesseractException {
+        // Create a specialized Tesseract instance for small text detection
+        Tesseract smallTextTesseract = new Tesseract();
         
-        String processedLine = line;
-        
-        // Apply each multi-field pattern
-        for (String[] pattern : multiFieldPatterns) {
-            String originalPattern = pattern[0];
-            String formattedPattern = pattern[1];
+        try {
+            // Use same datapath as main instance
+            smallTextTesseract.setDatapath(this.tesseractDataPath);
+            smallTextTesseract.setLanguage("eng+spa");
+            smallTextTesseract.setOcrEngineMode(1);
+            smallTextTesseract.setPageSegMode(13); // Raw line. Treat the image as a single text line
             
-            // Use regex to match the pattern (allowing for flexible spacing)
-            String regexPattern = originalPattern.replace(" ", "\\s+");
-            if (processedLine.matches(".*" + regexPattern + ".*")) {
-                processedLine = processedLine.replaceAll(regexPattern, formattedPattern);
-            }
+            // Small text specific configuration
+            smallTextTesseract.setVariable("tessedit_char_whitelist", "");
+            smallTextTesseract.setVariable("classify_enable_learning", "0");
+            smallTextTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            smallTextTesseract.setVariable("textord_min_linesize", "1.0"); // Smaller minimum line size
+            smallTextTesseract.setVariable("textord_noise_sizelimit", "0.5"); // More sensitive to small features
+            
+            return smallTextTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Small text OCR failed: " + e.getMessage());
+            return "[Small text detection failed]";
         }
-        
-        return processedLine;
     }
     
     /**
-     * Generate enhanced JSON output with all extraction data
+     * Get image format from file path
      */
-    private void generateEnhancedJsonOutput(String baseFileName, List<ExtractedWord> words, Map<String, Object> formData) throws IOException {
-        Path jsonFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.json");
-        
-        ObjectNode rootNode = objectMapper.createObjectNode();
-        rootNode.put("extractionTimestamp", System.currentTimeMillis());
-        rootNode.put("processingMode", PROCESSING_MODE.toString());
-        rootNode.put("processingDPI", PROCESSING_MODE.getDpi());
-        
-        // Form fields
-        @SuppressWarnings("unchecked")
-        Map<String, String> formFields = (Map<String, String>) formData.get("formFields");
-        ObjectNode formFieldsNode = objectMapper.createObjectNode();
-        if (formFields != null) {
-            for (Map.Entry<String, String> entry : formFields.entrySet()) {
-                formFieldsNode.put(entry.getKey(), entry.getValue());
-            }
+    private String getImageFormat(String filePath) {
+        String fileName = filePath.toLowerCase();
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+            return "JPEG";
+        } else if (fileName.endsWith(".png")) {
+            return "PNG";
+        } else if (fileName.endsWith(".tiff") || fileName.endsWith(".tif")) {
+            return "TIFF";
+        } else if (fileName.endsWith(".bmp")) {
+            return "BMP";
+        } else if (fileName.endsWith(".gif")) {
+            return "GIF";
+        } else if (fileName.endsWith(".webp")) {
+            return "WEBP";
+        } else {
+            return "UNKNOWN";
         }
-        rootNode.set("formFields", formFieldsNode);
-        
-        // PDFBox extracted text
-        String extractedText = (String) formData.get("extractedText");
-        rootNode.put("pdfBoxText", extractedText != null ? extractedText : "");
-        
-        // OCR results (if any words were extracted)
-        rootNode.put("totalWords", words.size());
-        ArrayNode wordsArray = objectMapper.createArrayNode();
-        
-        for (ExtractedWord word : words) {
-            ObjectNode wordNode = objectMapper.createObjectNode();
-            wordNode.put("text", word.getText());
-            wordNode.put("page", word.getPage());
-            wordNode.put("x", word.getX());
-            wordNode.put("y", word.getY());
-            wordNode.put("width", word.getWidth());
-            wordNode.put("height", word.getHeight());
-            wordNode.put("confidence", word.getConfidence());
-            
-            wordsArray.add(wordNode);
-        }
-        
-        rootNode.set("words", wordsArray);
-        
-        // Summary
-        ObjectNode summaryNode = objectMapper.createObjectNode();
-        summaryNode.put("formFieldsFound", formFields != null ? formFields.size() : 0);
-        summaryNode.put("wordsExtracted", words.size());
-        summaryNode.put("textLengthPDFBox", extractedText != null ? extractedText.length() : 0);
-        rootNode.set("summary", summaryNode);
-        
-        try (BufferedWriter writer = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(writer, rootNode);
-        }
-        
-        LOGGER.info("Enhanced JSON output saved to: " + jsonFile);
     }
+    
+    
     
     /**
      * Preprocesses the image to improve OCR accuracy for forms and checkboxes
@@ -1275,6 +882,137 @@ public class TesseractWordExtractor {
         }
         
         return processedImage;
+    }
+    
+    /**
+     * Generate enhanced text output with form fields and OCR results
+     */
+    private void generateEnhancedTextOutput(String baseFileName, String ocrText, Map<String, Object> data, String fileType) throws IOException {
+        Path textFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.txt");
+        
+        try (BufferedWriter writer = Files.newBufferedWriter(textFile, StandardCharsets.UTF_8)) {
+            writer.write("=== COMPREHENSIVE " + fileType + " EXTRACTION RESULTS ===\n");
+            writer.write("Generated: " + new java.util.Date() + "\n");
+            writer.write("Processing Mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)\n");
+            writer.write("File Type: " + fileType + "\n\n");
+            
+            if ("PDF".equals(fileType)) {
+                // Form fields section (PDF only)
+                @SuppressWarnings("unchecked")
+                Map<String, String> formFields = (Map<String, String>) data.get("formFields");
+                writer.write("=== FORM FIELDS EXTRACTED (PDFBox) ===\n");
+                if (formFields != null && !formFields.isEmpty()) {
+                    for (Map.Entry<String, String> entry : formFields.entrySet()) {
+                        writer.write("Field:\t" + entry.getKey() + "\n");
+                        writer.write("Value:\t" + entry.getValue() + "\n");
+                        writer.write("---\n");
+                    }
+                } else {
+                    writer.write("No interactive form fields found.\n");
+                }
+                writer.write("\n");
+                
+                // PDFBox text extraction
+                String extractedText = (String) data.get("extractedText");
+                writer.write("=== TEXT CONTENT EXTRACTED (PDFBox Text Stripper) ===\n");
+                if (extractedText != null && !extractedText.trim().isEmpty()) {
+                    writer.write(extractedText);
+                } else {
+                    writer.write("No text content extracted by PDFBox.\n");
+                }
+                writer.write("\n\n");
+            } else if ("IMAGE".equals(fileType)) {
+                // Image metadata section
+                writer.write("=== IMAGE METADATA ===\n");
+                writer.write("Width:\t" + data.get("imageWidth") + " pixels\n");
+                writer.write("Height:\t" + data.get("imageHeight") + " pixels\n");
+                writer.write("Format:\t" + data.get("imageFormat") + "\n\n");
+            }
+            
+            // OCR results
+            writer.write("=== ENHANCED OCR RESULTS (Tesseract Multi-Pass) ===\n");
+            writer.write(ocrText);
+        }
+        
+        LOGGER.info("Enhanced text output saved to: " + textFile);
+    }
+    
+    /**
+     * Generate enhanced JSON output with all extraction data
+     */
+    private void generateEnhancedJsonOutput(String baseFileName, List<ExtractedWord> words, Map<String, Object> data, String fileType) throws IOException {
+        Path jsonFile = Paths.get(OUTPUT_DIR, baseFileName + "_comprehensive.json");
+        
+        ObjectNode rootNode = objectMapper.createObjectNode();
+        rootNode.put("extractionTimestamp", System.currentTimeMillis());
+        rootNode.put("processingMode", PROCESSING_MODE.toString());
+        rootNode.put("processingDPI", PROCESSING_MODE.getDpi());
+        rootNode.put("fileType", fileType);
+        
+        if ("PDF".equals(fileType)) {
+            // Form fields (PDF only)
+            @SuppressWarnings("unchecked")
+            Map<String, String> formFields = (Map<String, String>) data.get("formFields");
+            ObjectNode formFieldsNode = objectMapper.createObjectNode();
+            if (formFields != null) {
+                for (Map.Entry<String, String> entry : formFields.entrySet()) {
+                    formFieldsNode.put(entry.getKey(), entry.getValue());
+                }
+            }
+            rootNode.set("formFields", formFieldsNode);
+            
+            // PDFBox extracted text
+            String extractedText = (String) data.get("extractedText");
+            rootNode.put("pdfBoxText", extractedText != null ? extractedText : "");
+        } else if ("IMAGE".equals(fileType)) {
+            // Image metadata
+            ObjectNode imageMetadata = objectMapper.createObjectNode();
+            imageMetadata.put("width", (Integer) data.get("imageWidth"));
+            imageMetadata.put("height", (Integer) data.get("imageHeight"));
+            imageMetadata.put("format", (String) data.get("imageFormat"));
+            rootNode.set("imageMetadata", imageMetadata);
+        }
+        
+        // OCR results (if any words were extracted)
+        rootNode.put("totalWords", words.size());
+        ArrayNode wordsArray = objectMapper.createArrayNode();
+        
+        for (ExtractedWord word : words) {
+            ObjectNode wordNode = objectMapper.createObjectNode();
+            wordNode.put("text", word.getText());
+            wordNode.put("page", word.getPage());
+            wordNode.put("x", word.getX());
+            wordNode.put("y", word.getY());
+            wordNode.put("width", word.getWidth());
+            wordNode.put("height", word.getHeight());
+            wordNode.put("confidence", word.getConfidence());
+            
+            wordsArray.add(wordNode);
+        }
+        
+        rootNode.set("words", wordsArray);
+        
+        // Summary
+        ObjectNode summaryNode = objectMapper.createObjectNode();
+        if ("PDF".equals(fileType)) {
+            @SuppressWarnings("unchecked")
+            Map<String, String> formFields = (Map<String, String>) data.get("formFields");
+            String extractedText = (String) data.get("extractedText");
+            summaryNode.put("formFieldsFound", formFields != null ? formFields.size() : 0);
+            summaryNode.put("textLengthPDFBox", extractedText != null ? extractedText.length() : 0);
+        } else if ("IMAGE".equals(fileType)) {
+            summaryNode.put("imageWidth", (Integer) data.get("imageWidth"));
+            summaryNode.put("imageHeight", (Integer) data.get("imageHeight"));
+            summaryNode.put("imageFormat", (String) data.get("imageFormat"));
+        }
+        summaryNode.put("wordsExtracted", words.size());
+        rootNode.set("summary", summaryNode);
+        
+        try (BufferedWriter writer = Files.newBufferedWriter(jsonFile, StandardCharsets.UTF_8)) {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(writer, rootNode);
+        }
+        
+        LOGGER.info("Enhanced JSON output saved to: " + jsonFile);
     }
     
     // Inner class to represent an extracted word

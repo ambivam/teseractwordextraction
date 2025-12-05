@@ -8,9 +8,11 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo Running Tesseract Word Extractor...
-java -jar target\word-extractor-1.0.0.jar "PDF for Automation Testing.pdf"
+echo Running Enhanced Tesseract Word Extractor...
+echo The extractor will process all PDF and image files in the 'data' folder
+java -jar target\word-extractor-1.0.0.jar
 
 echo.
 echo Process completed. Check the output folder for results.
+echo Supported formats: PDF, JPG, JPEG, PNG, TIFF, TIF, BMP, GIF, WEBP
 pause
