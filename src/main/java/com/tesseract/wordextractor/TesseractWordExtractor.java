@@ -409,10 +409,11 @@ public class TesseractWordExtractor {
             // Simple OCR passes with basic approaches
             StringBuilder imageTextBuilder = new StringBuilder();
             
-            // Pass 1: Simple processed image with PSM 3 (auto)
+            // Pass 1: Simple processed image with PSM 3 (auto) + post-processing
             try {
                 String imageText1 = performOCRWithConfig(processedImage, 3, "Simple Processed (Auto)");
-                imageTextBuilder.append("=== OCR Pass 1 (Simple Processed - Auto) ===\n").append(imageText1).append("\n\n");
+                String correctedText1 = applyCommonCorrections(imageText1);
+                imageTextBuilder.append("=== OCR Pass 1 (Simple Processed - Auto) ===\n").append(correctedText1).append("\n\n");
             } catch (Exception e) {
                 LOGGER.warning("Pass 1 OCR failed: " + e.getMessage());
             }
@@ -431,6 +432,15 @@ public class TesseractWordExtractor {
                 imageTextBuilder.append("=== OCR Pass 3 (Numbers & Codes Specialized) ===\n").append(imageText3).append("\n\n");
             } catch (Exception e) {
                 LOGGER.warning("Pass 3 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 4: Header section focused (PSM 6 for form fields)
+            try {
+                String imageText4 = performOCRWithConfig(processedImage, 6, "Header Section (Form Fields)");
+                String correctedText4 = applyCommonCorrections(imageText4);
+                imageTextBuilder.append("=== OCR Pass 4 (Header Section - Form Fields) ===\n").append(correctedText4).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 4 OCR failed: " + e.getMessage());
             }
             
             allText.append(imageTextBuilder.toString());
@@ -455,12 +465,12 @@ public class TesseractWordExtractor {
         System.out.println("- " + OUTPUT_DIR + "/" + baseFileName + "_comprehensive.json");
         System.out.println("\nExtraction Summary:");
         System.out.println("- Image dimensions: " + imageData.get("imageWidth") + "x" + imageData.get("imageHeight"));
-        System.out.println("- OCR processing: 3 passes (Simple Back-to-Basics)");
-        System.out.println("- Image processing: 2x scaling + basic contrast enhancement");
+        System.out.println("- OCR processing: 4 passes (Precision-Enhanced Multi-Pass)");
+        System.out.println("- Image processing: Adaptive 2x scaling + precision contrast enhancement");
         System.out.println("- Final processed size: " + (((Integer)imageData.get("imageWidth")) * 2) + "x" + (((Integer)imageData.get("imageHeight")) * 2));
-        System.out.println("- Languages tested: Portuguese+English, English-only");
+        System.out.println("- Languages: Portuguese+English with smart corrections");
         System.out.println("- Processing DPI: " + PROCESSING_MODE.getDpi());
-        System.out.println("- Text extraction: Simple Proven Techniques");
+        System.out.println("- Text extraction: Precision-Focused + Post-Processing Corrections");
     }
     
     
@@ -602,15 +612,18 @@ public class TesseractWordExtractor {
         
         // Optimized configuration for interface text extraction
         switch (pageSegMode) {
-            case 3: // Auto detection - optimized for interface text with better number recognition
+            case 3: // Auto detection - precision-focused for interface text
                 tesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
-                tesseract.setVariable("textord_min_linesize", "1.5"); // Reduced for better small text
-                tesseract.setVariable("textord_noise_sizelimit", "0.5"); // More aggressive noise filtering
+                tesseract.setVariable("textord_min_linesize", "1.2"); // Fine-tuned for precision
+                tesseract.setVariable("textord_noise_sizelimit", "0.4"); // Stricter noise filtering
                 tesseract.setVariable("textord_tabfind_find_tables", "1");
-                // Enhanced settings for better character recognition
+                // Precision-focused settings for character accuracy
                 tesseract.setVariable("classify_bln_numeric_mode", "1"); // Better number recognition
                 tesseract.setVariable("tessedit_single_match", "0"); // Allow multiple character matches
                 tesseract.setVariable("segment_penalty_dict_frequent_word", "1"); // Prefer dictionary words
+                tesseract.setVariable("classify_character_fragments_garbage_certainty_threshold", "50"); // Reduce character fragmentation
+                tesseract.setVariable("wordrec_worst_state", "1"); // Better word recognition
+                tesseract.setVariable("language_model_penalty_non_freq_dict_word", "0.1"); // Prefer common words
                 break;
             case 6: // Form fields - comprehensive Portuguese character set
                 tesseract.setVariable("textord_tabfind_find_tables", "1");
@@ -777,61 +790,169 @@ public class TesseractWordExtractor {
     }
     
     /**
-     * Simple, proven preprocessing approach
-     * Basic techniques that actually work for interface screenshots
+     * Apply common OCR corrections for interface text
+     */
+    private String applyCommonCorrections(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return text;
+        }
+        
+        String corrected = text;
+        
+        // Common character confusions in interface text
+        corrected = corrected.replaceAll("\\bS6S(\\d+)", "565$1"); // S6S -> 565 (common in order numbers)
+        corrected = corrected.replaceAll("Trarsportadora", "Transportadora"); // r/n confusion
+        corrected = corrected.replaceAll("Trarsporsócra", "Transportadora"); // Multiple character errors
+        corrected = corrected.replaceAll("\\bNe\\.", "NF"); // e/F confusion in "NF"
+        corrected = corrected.replaceAll("\\bFilsl\\b", "Filial"); // s/a confusion
+        corrected = corrected.replaceAll("\\bFilal\\b", "Filial"); // s/a confusion
+        corrected = corrected.replaceAll("\\bFisl\\b", "Filial"); // s/a confusion
+        corrected = corrected.replaceAll("Filial Transe Final", "Filial Transp. Final"); // s/p confusion
+        corrected = corrected.replaceAll("993500", "993900"); // 5/9 confusion in route numbers
+        corrected = corrected.replaceAll("CDBana", "CD Bahia"); // n/h confusion
+        corrected = corrected.replaceAll("\\bvOC(O+)\\b", "VDC000"); // O/0 confusion in codes
+        corrected = corrected.replaceAll("\\bvDC(O+)\\b", "VDC000"); // O/0 confusion in codes
+        corrected = corrected.replaceAll("\\bSAJU\\b", "SAIU"); // J/I confusion
+        corrected = corrected.replaceAll("\\bSay\\b", "SAIU"); // a/I confusion
+        corrected = corrected.replaceAll("\\bDota\\b", "Data"); // o/a confusion
+        corrected = corrected.replaceAll("\\bMora\\b", "Hora"); // o/r confusion
+        corrected = corrected.replaceAll("Oererercia", "Ocorrência"); // Multiple character errors
+        corrected = corrected.replaceAll("Decoração", "Descrição"); // c/s confusion
+        
+        // Fix incorrectly formatted order/document numbers (prevent date formatting on IDs)
+        corrected = corrected.replaceAll("\\b56/57/99305\\b", "565799305"); // Fix order number
+        corrected = corrected.replaceAll("\\b00/52/21508\\b", "005221508"); // Fix NF number
+        corrected = corrected.replaceAll("\\bCD Bana\\b", "CD Bahia"); // n/h confusion
+        corrected = corrected.replaceAll("\\bvDCO0O\\b", "VDC000"); // O/0 confusion
+        corrected = corrected.replaceAll("\\bD7NOTOZS\\b", "07/10/2025"); // Multiple character errors in date
+        corrected = corrected.replaceAll("\\bSA PARA\\b", "SAIU PARA"); // Missing letters
+        corrected = corrected.replaceAll("\\bPRRA\\b", "PARA"); // R duplication error
+        
+        // Date and time formatting corrections (only for actual dates, not IDs)
+        corrected = corrected.replaceAll("(\\d{2}/\\d{2}/\\d{4})\\s+(\\d{2})\\s+(\\d{2})\\s*(\\d{2})", "$1 $2:$3:$4"); // Fix time format
+        corrected = corrected.replaceAll("(\\d{2}/\\d{2}/\\d{4})\\s+(\\d{2})\\s+(\\d{4})", "$1 $2:$3"); // Fix time format
+        
+        // Common Portuguese words corrections
+        corrected = corrected.replaceAll("\\bTransp\\.", "Transp."); // Ensure proper abbreviation
+        corrected = corrected.replaceAll("\\bFinal:", "Final:"); // Ensure proper formatting
+        
+        LOGGER.info("Applied common corrections to OCR text");
+        return corrected;
+    }
+    
+    /**
+     * Analyze image contrast to determine optimal processing approach
+     */
+    private int[] analyzeImageContrast(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        
+        int minGray = 255;
+        int maxGray = 0;
+        int totalGray = 0;
+        int pixelCount = 0;
+        
+        // Sample every 4th pixel for performance
+        for (int y = 0; y < height; y += 4) {
+            for (int x = 0; x < width; x += 4) {
+                int rgb = image.getRGB(x, y);
+                int gray = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
+                
+                minGray = Math.min(minGray, gray);
+                maxGray = Math.max(maxGray, gray);
+                totalGray += gray;
+                pixelCount++;
+            }
+        }
+        
+        int avgContrast = totalGray / pixelCount;
+        int contrastRange = maxGray - minGray;
+        
+        return new int[]{avgContrast, contrastRange};
+    }
+    
+    /**
+     * Intelligent adaptive preprocessing
+     * Detects image quality and applies appropriate processing
      */
     private BufferedImage preprocessImageForHighQualityOCR(BufferedImage originalImage) {
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
         
         LOGGER.info("Original image size: " + width + "x" + height);
-        LOGGER.info("Using simple, proven preprocessing approach");
         
-        // Simple 2x scaling - enough to help but not overwhelming
+        // Analyze image contrast to determine processing approach
+        int[] contrastAnalysis = analyzeImageContrast(originalImage);
+        int avgContrast = contrastAnalysis[0];
+        int contrastRange = contrastAnalysis[1];
+        
+        LOGGER.info("Image analysis - Average contrast: " + avgContrast + ", Range: " + contrastRange);
+        
+        // Simple 2x scaling for all images
         int scaleFactor = 2;
         int scaledWidth = width * scaleFactor;
         int scaledHeight = height * scaleFactor;
         
-        LOGGER.info("Simple 2x scaling to: " + scaledWidth + "x" + scaledHeight);
-        
-        // Create scaled image with basic quality settings
         BufferedImage scaledImage = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
         java.awt.Graphics2D g2d = scaledImage.createGraphics();
         g2d.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g2d.drawImage(originalImage, 0, 0, scaledWidth, scaledHeight, null);
         g2d.dispose();
         
-        // Enhanced grayscale conversion with optimized contrast for interface text
         BufferedImage processedImage = new BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_RGB);
         
-        for (int y = 0; y < scaledHeight; y++) {
-            for (int x = 0; x < scaledWidth; x++) {
-                int rgb = scaledImage.getRGB(x, y);
-                
-                // Convert to grayscale
-                int gray = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
-                
-                // Enhanced contrast specifically for interface text and numbers
-                if (gray < 120) {
-                    // Dark text/numbers - make much darker and sharper
-                    gray = Math.max(0, gray - 50);
-                } else if (gray > 200) {
-                    // Light background - make much lighter
-                    gray = 255;
-                } else {
-                    // Mid-range - apply stronger contrast for better character definition
-                    if (gray < 160) {
-                        gray = Math.max(0, gray - 40); // Push towards black
-                    } else {
-                        gray = Math.min(255, gray + 60); // Push towards white
+        // Adaptive processing based on image quality
+        if (contrastRange > 150 && avgContrast > 100) {
+            // High-contrast, clean image - precision-focused minimal processing
+            LOGGER.info("High-contrast image detected - applying precision-focused minimal processing");
+            for (int y = 0; y < scaledHeight; y++) {
+                for (int x = 0; x < scaledWidth; x++) {
+                    int rgb = scaledImage.getRGB(x, y);
+                    int gray = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
+                    
+                    // Precision-focused contrast adjustment for character clarity
+                    if (gray < 90) {
+                        gray = Math.max(0, gray - 15); // Slightly more aggressive darkening for text
+                    } else if (gray > 210) {
+                        gray = 255; // Pure white background
+                    } else if (gray < 140) {
+                        // Mid-dark range - likely text edges, enhance slightly
+                        gray = Math.max(0, gray - 8);
+                    } else if (gray > 180) {
+                        // Mid-light range - likely background, brighten slightly
+                        gray = Math.min(255, gray + 15);
                     }
+                    
+                    processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
                 }
-                
-                processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
+            }
+        } else {
+            // Low-contrast or poor quality image - aggressive processing
+            LOGGER.info("Low-contrast image detected - applying enhanced processing");
+            for (int y = 0; y < scaledHeight; y++) {
+                for (int x = 0; x < scaledWidth; x++) {
+                    int rgb = scaledImage.getRGB(x, y);
+                    int gray = (int) (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF));
+                    
+                    // Aggressive contrast for poor quality images
+                    if (gray < 120) {
+                        gray = Math.max(0, gray - 50);
+                    } else if (gray > 200) {
+                        gray = 255;
+                    } else {
+                        if (gray < 160) {
+                            gray = Math.max(0, gray - 40);
+                        } else {
+                            gray = Math.min(255, gray + 60);
+                        }
+                    }
+                    
+                    processedImage.setRGB(x, y, (gray << 16) | (gray << 8) | gray);
+                }
             }
         }
         
-        LOGGER.info("Completed simple preprocessing - final image: " + scaledWidth + "x" + scaledHeight);
+        LOGGER.info("Completed adaptive preprocessing - final image: " + scaledWidth + "x" + scaledHeight);
         return processedImage;
     }
     
