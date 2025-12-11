@@ -109,6 +109,10 @@ output/*.txt
 output/*.json
 !output/.gitkeep
 
+## Grouping files (keep structure but ignore content)
+grouping/
+!grouping/.gitkeep
+
 ## Temporary files
 *.tmp
 *.temp

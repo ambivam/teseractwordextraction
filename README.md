@@ -222,3 +222,11 @@ java -jar target\word-extractor-1.0.0.jar
 
 
 mvn exec:java
+
+#*******************
+
+java -cp "target/classes" com.tesseract.wordextractor.FileGroupingManager
+
+java -cp "target/classes" com.tesseract.wordextractor.ImprovedFileGroupingManager
+
+#*******************
