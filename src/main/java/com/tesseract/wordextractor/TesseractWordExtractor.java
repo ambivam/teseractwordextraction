@@ -33,6 +33,12 @@ import java.util.Map;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 import java.util.stream.Stream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TesseractWordExtractor {
     private static final Logger LOGGER = Logger.getLogger(TesseractWordExtractor.class.getName());
@@ -59,6 +65,18 @@ public class TesseractWordExtractor {
     
     private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH_QUALITY;
     
+    // Multithreading configuration
+    private static final int DEFAULT_THREAD_POOL_SIZE = Math.max(2, Runtime.getRuntime().availableProcessors() - 1);
+    private static final int MAX_THREAD_POOL_SIZE = 8; // Prevent excessive resource usage
+    private static final int OPTIMAL_THREAD_POOL_SIZE = Math.min(DEFAULT_THREAD_POOL_SIZE, MAX_THREAD_POOL_SIZE);
+    
+    // Thread pool for file processing
+    private ExecutorService executorService;
+    private final AtomicInteger processedFiles = new AtomicInteger(0);
+    private final AtomicInteger successfulFiles = new AtomicInteger(0);
+    private final AtomicInteger failedFiles = new AtomicInteger(0);
+    private final ConcurrentHashMap<String, String> processingResults = new ConcurrentHashMap<>();
+    
     private final Tesseract tesseract;
     private final ObjectMapper objectMapper;
     private String tesseractDataPath;
@@ -66,6 +84,10 @@ public class TesseractWordExtractor {
     public TesseractWordExtractor() {
         this.tesseract = new Tesseract();
         this.objectMapper = new ObjectMapper();
+        
+        // Initialize thread pool
+        this.executorService = Executors.newFixedThreadPool(OPTIMAL_THREAD_POOL_SIZE);
+        LOGGER.info("Initialized thread pool with " + OPTIMAL_THREAD_POOL_SIZE + " threads");
         
         // Configure Tesseract
         try {
@@ -165,8 +187,32 @@ public class TesseractWordExtractor {
             LOGGER.info("Tesseract initialized successfully");
             LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to initialize Tesseract", e);
-            throw new RuntimeException("Tesseract initialization failed", e);
+            LOGGER.log(Level.SEVERE, "Error initializing Tesseract", e);
+            // Clean up thread pool if initialization fails
+            if (this.executorService != null) {
+                this.executorService.shutdown();
+            }
+            throw new RuntimeException("Failed to initialize Tesseract OCR", e);
+        }
+    }
+    
+    /**
+     * Cleanup method to properly shutdown thread pool
+     */
+    public void cleanup() {
+        if (executorService != null && !executorService.isShutdown()) {
+            LOGGER.info("Shutting down thread pool...");
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    LOGGER.warning("Thread pool did not terminate gracefully, forcing shutdown");
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                LOGGER.warning("Interrupted while waiting for thread pool termination");
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
     
@@ -174,10 +220,13 @@ public class TesseractWordExtractor {
         TesseractWordExtractor extractor = new TesseractWordExtractor();
         
         try {
-            extractor.processDataFolder();
+            extractor.processDataFolderConcurrently();
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error processing data folder", e);
             System.err.println("Error processing data folder: " + e.getMessage());
+        } finally {
+            // Ensure proper cleanup of resources
+            extractor.cleanup();
         }
     }
     
@@ -245,12 +294,150 @@ public class TesseractWordExtractor {
     }
     
     /**
+     * Process all supported files in the data folder using multithreading for improved performance
+     */
+    public void processDataFolderConcurrently() throws IOException {
+        Path dataPath = Paths.get(DATA_DIR);
+        
+        // Create data directory if it doesn't exist
+        if (!Files.exists(dataPath)) {
+            Files.createDirectories(dataPath);
+            System.out.println("Created data directory: " + DATA_DIR);
+            System.out.println("Please place your PDF and image files in the data folder and run again.");
+            return;
+        }
+        
+        // Create output directory if it doesn't exist
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        Files.createDirectories(outputDir);
+        
+        List<Path> filesToProcess = new ArrayList<>();
+        
+        // Find all supported files in data directory
+        try (Stream<Path> paths = Files.walk(dataPath)) {
+            paths.filter(Files::isRegularFile)
+                 .filter(this::isSupportedFile)
+                 .forEach(filesToProcess::add);
+        }
+        
+        if (filesToProcess.isEmpty()) {
+            System.out.println("No supported files found in data directory.");
+            System.out.println("Supported formats: PDF, JPG, JPEG, PNG, TIFF, TIF, BMP, GIF, WEBP");
+            return;
+        }
+        
+        System.out.println("Found " + filesToProcess.size() + " file(s) to process:");
+        for (Path file : filesToProcess) {
+            System.out.println("- " + file.getFileName());
+        }
+        System.out.println();
+        System.out.println("Processing files concurrently with " + OPTIMAL_THREAD_POOL_SIZE + " threads...");
+        System.out.println();
+        
+        // Reset counters
+        processedFiles.set(0);
+        successfulFiles.set(0);
+        failedFiles.set(0);
+        processingResults.clear();
+        
+        long startTime = System.currentTimeMillis();
+        
+        // Create CompletableFuture for each file
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        
+        for (Path filePath : filesToProcess) {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    String fileName = filePath.getFileName().toString();
+                    System.out.println("[Thread-" + Thread.currentThread().getName() + "] Processing: " + fileName);
+                    
+                    // Process file with thread-safe method
+                    processFileThreadSafe(filePath.toString());
+                    
+                    successfulFiles.incrementAndGet();
+                    processingResults.put(fileName, "SUCCESS");
+                    System.out.println("[Thread-" + Thread.currentThread().getName() + "] ✓ Successfully processed: " + fileName);
+                    
+                } catch (Exception e) {
+                    String fileName = filePath.getFileName().toString();
+                    failedFiles.incrementAndGet();
+                    processingResults.put(fileName, "FAILED: " + e.getMessage());
+                    LOGGER.log(Level.SEVERE, "Error processing file: " + filePath, e);
+                    System.err.println("[Thread-" + Thread.currentThread().getName() + "] ✗ Error processing " + fileName + ": " + e.getMessage());
+                } finally {
+                    int completed = processedFiles.incrementAndGet();
+                    if (completed % 5 == 0 || completed == filesToProcess.size()) {
+                        System.out.println("Progress: " + completed + "/" + filesToProcess.size() + " files processed");
+                    }
+                }
+            }, executorService);
+            
+            futures.add(future);
+        }
+        
+        // Wait for all files to complete
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error waiting for concurrent processing to complete", e);
+            System.err.println("Error during concurrent processing: " + e.getMessage());
+        }
+        
+        long endTime = System.currentTimeMillis();
+        long processingTime = endTime - startTime;
+        
+        System.out.println();
+        System.out.println("=== CONCURRENT PROCESSING SUMMARY ===");
+        System.out.println("Total files: " + filesToProcess.size());
+        System.out.println("Successfully processed: " + successfulFiles.get());
+        System.out.println("Errors: " + failedFiles.get());
+        System.out.println("Processing time: " + (processingTime / 1000.0) + " seconds");
+        System.out.println("Average time per file: " + (processingTime / (double) filesToProcess.size() / 1000.0) + " seconds");
+        System.out.println("Thread pool size: " + OPTIMAL_THREAD_POOL_SIZE + " threads");
+        System.out.println("Output directory: " + OUTPUT_DIR);
+        
+        // Show detailed results if there were failures
+        if (failedFiles.get() > 0) {
+            System.out.println();
+            System.out.println("=== DETAILED RESULTS ===");
+            processingResults.forEach((fileName, result) -> {
+                if (result.startsWith("FAILED")) {
+                    System.err.println("✗ " + fileName + ": " + result);
+                } else {
+                    System.out.println("✓ " + fileName + ": " + result);
+                }
+            });
+        }
+    }
+    
+    /**
      * Check if file has supported extension
      */
     private boolean isSupportedFile(Path filePath) {
         String fileName = filePath.getFileName().toString().toLowerCase();
         return SUPPORTED_IMAGE_EXTENSIONS.stream().anyMatch(fileName::endsWith) ||
                SUPPORTED_PDF_EXTENSIONS.stream().anyMatch(fileName::endsWith);
+    }
+    
+    /**
+     * Thread-safe version of processFile that creates its own Tesseract instance
+     * This prevents conflicts when multiple threads are processing files simultaneously
+     */
+    public void processFileThreadSafe(String filePath) throws IOException, TesseractException {
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path)) {
+            throw new FileNotFoundException("File not found: " + filePath);
+        }
+        
+        String fileName = path.getFileName().toString().toLowerCase();
+        
+        if (SUPPORTED_PDF_EXTENSIONS.stream().anyMatch(fileName::endsWith)) {
+            extractFromPdfThreadSafe(filePath);
+        } else if (SUPPORTED_IMAGE_EXTENSIONS.stream().anyMatch(fileName::endsWith)) {
+            extractFromImageThreadSafe(filePath);
+        } else {
+            throw new IllegalArgumentException("Unsupported file format: " + fileName);
+        }
     }
     
     /**
@@ -271,6 +458,98 @@ public class TesseractWordExtractor {
         } else {
             throw new IllegalArgumentException("Unsupported file format: " + fileName);
         }
+    }
+    
+    /**
+     * Thread-safe PDF extraction that creates its own Tesseract instance
+     */
+    public void extractFromPdfThreadSafe(String pdfFilePath) throws IOException, TesseractException {
+        Path pdfPath = Paths.get(pdfFilePath);
+        if (!Files.exists(pdfPath)) {
+            throw new FileNotFoundException("PDF file not found: " + pdfFilePath);
+        }
+        
+        String baseFileName = getBaseFileName(pdfFilePath);
+        LOGGER.info("[Thread-Safe] Processing PDF: " + pdfFilePath);
+        
+        // Create output directory if it doesn't exist
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        Files.createDirectories(outputDir);
+        
+        List<ExtractedWord> allWords = new ArrayList<>();
+        StringBuilder allText = new StringBuilder();
+        Map<String, Object> formData = new HashMap<>();
+        
+        try (PDDocument document = Loader.loadPDF(new File(pdfFilePath))) {
+            // Step 1: Extract form fields using PDFBox (thread-safe)
+            Map<String, String> extractedFormFields = extractFormFields(document);
+            formData.put("formFields", extractedFormFields);
+            
+            // Step 2: Extract regular text using PDFBox text stripper (thread-safe)
+            String extractedText = extractTextContent(document);
+            formData.put("extractedText", extractedText);
+            
+            // Step 3: Enhanced OCR processing with thread-safe Tesseract instance
+            PDFRenderer pdfRenderer = new PDFRenderer(document);
+            int numberOfPages = document.getNumberOfPages();
+            
+            LOGGER.info("PDF has " + numberOfPages + " pages");
+            LOGGER.info("Found " + extractedFormFields.size() + " form fields");
+            
+            for (int pageIndex = 0; pageIndex < numberOfPages; pageIndex++) {
+                LOGGER.info("Processing page " + (pageIndex + 1) + " of " + numberOfPages);
+                
+                // Convert PDF page to image using selected processing mode
+                int currentDpi = PROCESSING_MODE.getDpi();
+                BufferedImage image = pdfRenderer.renderImageWithDPI(pageIndex, currentDpi, ImageType.RGB);
+                
+                // Enhanced preprocessing for form fields
+                BufferedImage processedImage = preprocessImageForFormOCR(image);
+                
+                // Multiple OCR passes optimized for forms with thread-safe methods
+                StringBuilder pageTextBuilder = new StringBuilder();
+                
+                // Pass 1: Standard OCR with PSM 3 (auto) 
+                try {
+                    String pageText1 = performOCRWithConfigThreadSafe(processedImage, 3, "Auto Detection");
+                    pageTextBuilder.append("=== OCR Pass 1 (Auto Detection) ===\n").append(pageText1).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 1 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 2: Form-optimized OCR with PSM 6 (uniform block)
+                try {
+                    String pageText2 = performOCRWithConfigThreadSafe(processedImage, 6, "Form Fields");
+                    pageTextBuilder.append("=== OCR Pass 2 (Form Fields) ===\n").append(pageText2).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 2 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 3: Single word detection for text boxes
+                try {
+                    String pageText3 = performOCRWithConfigThreadSafe(processedImage, 8, "Single Words/Dates");
+                    pageTextBuilder.append("=== OCR Pass 3 (Single Words/Dates) ===\n").append(pageText3).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 3 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                // Pass 4: Checkbox and symbol detection
+                try {
+                    String pageText4 = performCheckboxOCRThreadSafe(processedImage);
+                    pageTextBuilder.append("=== OCR Pass 4 (Checkboxes & Symbols) ===\n").append(pageText4).append("\n\n");
+                } catch (Exception e) {
+                    LOGGER.warning("Pass 4 OCR failed for page " + (pageIndex + 1) + ": " + e.getMessage());
+                }
+                
+                allText.append(pageTextBuilder.toString()).append("\n\n");
+            }
+        }
+        
+        // Generate comprehensive outputs
+        generateEnhancedTextOutput(baseFileName, allText.toString(), formData, "PDF");
+        generateEnhancedJsonOutput(baseFileName, allWords, formData, "PDF");
+        
+        LOGGER.info("[Thread-Safe] PDF extraction completed. Files saved in " + OUTPUT_DIR + " directory");
     }
     
     /**
@@ -370,6 +649,96 @@ public class TesseractWordExtractor {
         System.out.println("- Form fields found: " + ((Map<?, ?>) formData.get("formFields")).size());
         System.out.println("- OCR processing: 4 passes completed");
         System.out.println("- Text extraction: PDFBox + Enhanced OCR");
+    }
+    
+    /**
+     * Thread-safe image extraction that uses thread-safe OCR methods
+     */
+    public void extractFromImageThreadSafe(String imageFilePath) throws IOException, TesseractException {
+        Path imagePath = Paths.get(imageFilePath);
+        if (!Files.exists(imagePath)) {
+            throw new FileNotFoundException("Image file not found: " + imageFilePath);
+        }
+        
+        String baseFileName = getBaseFileName(imageFilePath);
+        LOGGER.info("[Thread-Safe] Processing Image: " + imageFilePath);
+        
+        // Create output directory if it doesn't exist
+        Path outputDir = Paths.get(OUTPUT_DIR);
+        Files.createDirectories(outputDir);
+        
+        List<ExtractedWord> allWords = new ArrayList<>();
+        StringBuilder allText = new StringBuilder();
+        Map<String, Object> imageData = new HashMap<>();
+        
+        try {
+            // Load the image
+            BufferedImage originalImage = ImageIO.read(new File(imageFilePath));
+            if (originalImage == null) {
+                throw new IOException("Unable to read image file: " + imageFilePath);
+            }
+            
+            LOGGER.info("Image dimensions: " + originalImage.getWidth() + "x" + originalImage.getHeight());
+            
+            // Test both original and processed images
+            BufferedImage processedImage = preprocessImageForHighQualityOCR(originalImage);
+            
+            LOGGER.info("Testing with both original and processed images for comparison");
+            
+            // Simple OCR passes with thread-safe methods
+            StringBuilder imageTextBuilder = new StringBuilder();
+            
+            // Pass 1: Simple processed image with PSM 3 (auto) + post-processing
+            try {
+                String imageText1 = performOCRWithConfigThreadSafe(processedImage, 3, "Simple Processed (Auto)");
+                String correctedText1 = applyCommonCorrections(imageText1);
+                imageTextBuilder.append("=== OCR Pass 1 (Simple Processed - Auto) ===\n").append(correctedText1).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 1 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 2: Original image with PSM 3 (auto)
+            try {
+                String imageText2 = performOCRWithConfigThreadSafe(originalImage, 3, "Original Image (Auto)");
+                imageTextBuilder.append("=== OCR Pass 2 (Original Image - Auto) ===\n").append(imageText2).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 2 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 3: Specialized numbers and codes recognition
+            try {
+                String imageText3 = performNumbersOCRThreadSafe(processedImage);
+                imageTextBuilder.append("=== OCR Pass 3 (Numbers & Codes Specialized) ===\n").append(imageText3).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 3 OCR failed: " + e.getMessage());
+            }
+            
+            // Pass 4: Header section focused (PSM 6 for form fields)
+            try {
+                String imageText4 = performOCRWithConfigThreadSafe(processedImage, 6, "Header Section (Form Fields)");
+                String correctedText4 = applyCommonCorrections(imageText4);
+                imageTextBuilder.append("=== OCR Pass 4 (Header Section - Form Fields) ===\n").append(correctedText4).append("\n\n");
+            } catch (Exception e) {
+                LOGGER.warning("Pass 4 OCR failed: " + e.getMessage());
+            }
+            
+            allText.append(imageTextBuilder.toString());
+            
+            // Store image metadata
+            imageData.put("imageWidth", originalImage.getWidth());
+            imageData.put("imageHeight", originalImage.getHeight());
+            imageData.put("imageFormat", getImageFormat(imageFilePath));
+            
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error processing image: " + imageFilePath, e);
+            throw e;
+        }
+        
+        // Generate comprehensive outputs
+        generateEnhancedTextOutput(baseFileName, allText.toString(), imageData, "IMAGE");
+        generateEnhancedJsonOutput(baseFileName, allWords, imageData, "IMAGE");
+        
+        LOGGER.info("[Thread-Safe] Image extraction completed. Files saved in " + OUTPUT_DIR + " directory");
     }
     
     /**
@@ -575,6 +944,36 @@ public class TesseractWordExtractor {
     }
     
     /**
+     * Thread-safe version of performNumbersOCR that creates its own Tesseract instance
+     */
+    private String performNumbersOCRThreadSafe(BufferedImage image) throws TesseractException {
+        // Create specialized Tesseract instance for numbers and codes
+        Tesseract numbersTesseract = new Tesseract();
+        
+        try {
+            numbersTesseract.setDatapath(this.tesseractDataPath);
+            numbersTesseract.setLanguage("eng"); // English for better number recognition
+            numbersTesseract.setOcrEngineMode(1);
+            numbersTesseract.setPageSegMode(8); // Single word mode for numbers
+            
+            // Optimized for numbers and codes
+            numbersTesseract.setVariable("tessedit_char_whitelist", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:/-. ");
+            numbersTesseract.setVariable("classify_bln_numeric_mode", "1");
+            numbersTesseract.setVariable("textord_min_linesize", "1.0");
+            numbersTesseract.setVariable("textord_noise_sizelimit", "0.3");
+            numbersTesseract.setVariable("classify_enable_learning", "0");
+            numbersTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            
+            LOGGER.info("OCR Pass (Numbers & Codes) - Thread-safe specialized number recognition");
+            return numbersTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Thread-safe numbers OCR failed: " + e.getMessage());
+            return "[Numbers detection failed]"; 
+        }
+    }
+    
+    /**
      * Specialized OCR for numbers and codes with enhanced character recognition
      */
     private String performNumbersOCR(BufferedImage image) throws TesseractException {
@@ -676,6 +1075,109 @@ public class TesseractWordExtractor {
         tesseract.setVariable("wordrec_enable_assoc", "0");
         
         return result;
+    }
+    
+    /**
+     * Thread-safe version of performOCRWithConfig that creates its own Tesseract instance
+     */
+    private String performOCRWithConfigThreadSafe(BufferedImage image, int pageSegMode, String passName) throws TesseractException {
+        // Create a new Tesseract instance for this thread
+        Tesseract threadTesseract = new Tesseract();
+        
+        try {
+            // Configure the thread-specific Tesseract instance
+            threadTesseract.setDatapath(this.tesseractDataPath);
+            threadTesseract.setLanguage("por+eng"); // Use Portuguese + English
+            threadTesseract.setOcrEngineMode(1);
+            threadTesseract.setPageSegMode(pageSegMode);
+            
+            // Apply the same configuration logic as the original method
+            switch (pageSegMode) {
+                case 3: // Auto detection - precision-focused for interface text
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                    threadTesseract.setVariable("textord_min_linesize", "1.2");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.4");
+                    threadTesseract.setVariable("textord_tabfind_find_tables", "1");
+                    threadTesseract.setVariable("classify_bln_numeric_mode", "1");
+                    threadTesseract.setVariable("tessedit_single_match", "0");
+                    threadTesseract.setVariable("segment_penalty_dict_frequent_word", "1");
+                    threadTesseract.setVariable("classify_character_fragments_garbage_certainty_threshold", "50");
+                    threadTesseract.setVariable("wordrec_worst_state", "1");
+                    threadTesseract.setVariable("language_model_penalty_non_freq_dict_word", "0.1");
+                    break;
+                case 6: // Form fields - comprehensive Portuguese character set
+                    threadTesseract.setVariable("textord_tabfind_find_tables", "1");
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-._()[] ");
+                    threadTesseract.setVariable("textord_min_linesize", "2.5");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.8");
+                    break;
+                case 7: // Single text line - for headers and labels
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                    threadTesseract.setVariable("textord_min_linesize", "1.5");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.5");
+                    break;
+                case 8: // Single words/dates - numbers and dates
+                    threadTesseract.setVariable("tessedit_char_whitelist", "0123456789/:-. ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+                    threadTesseract.setVariable("textord_min_linesize", "1.8");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.6");
+                    break;
+                case 11: // Sparse text - for scattered interface elements
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                    threadTesseract.setVariable("textord_min_linesize", "1.0");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.4");
+                    threadTesseract.setVariable("textord_tabfind_find_tables", "1");
+                    break;
+                case 13: // Raw line - for difficult text
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                    threadTesseract.setVariable("textord_min_linesize", "1.2");
+                    threadTesseract.setVariable("textord_noise_sizelimit", "0.3");
+                    break;
+                default:
+                    threadTesseract.setVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÀÁÂÃÇÉÊÍÓÔÕÚàáâãçéêíóôõú0123456789:/-. ");
+                    threadTesseract.setVariable("textord_min_linesize", "2.0");
+                    break;
+            }
+            
+            // Memory-optimized settings
+            threadTesseract.setVariable("textord_heavy_nr", "0");
+            threadTesseract.setVariable("textord_show_initial_words", "0");
+            threadTesseract.setVariable("wordrec_enable_assoc", "0");
+            threadTesseract.setVariable("classify_enable_learning", "0");
+            threadTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            
+            return threadTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Thread-safe OCR failed (" + passName + "): " + e.getMessage());
+            return "[OCR failed: " + e.getMessage() + "]"; 
+        }
+    }
+    
+    /**
+     * Thread-safe version of performCheckboxOCR that creates its own Tesseract instance
+     */
+    private String performCheckboxOCRThreadSafe(BufferedImage image) throws TesseractException {
+        // Create a specialized Tesseract instance for checkbox detection
+        Tesseract checkboxTesseract = new Tesseract();
+        
+        try {
+            // Use same datapath as main instance
+            checkboxTesseract.setDatapath(this.tesseractDataPath);
+            checkboxTesseract.setLanguage("eng");
+            checkboxTesseract.setOcrEngineMode(1);
+            checkboxTesseract.setPageSegMode(6);
+            
+            // Checkbox-specific character whitelist
+            checkboxTesseract.setVariable("tessedit_char_whitelist", "XxχΧ✓✗☐☑☒□■▢▣⬜⬛◯○●◉◎⚪⚫🔲🔳▫▪");
+            checkboxTesseract.setVariable("classify_enable_learning", "0");
+            checkboxTesseract.setVariable("classify_enable_adaptive_matcher", "0");
+            
+            return checkboxTesseract.doOCR(image);
+            
+        } catch (Exception e) {
+            LOGGER.warning("Thread-safe checkbox OCR failed: " + e.getMessage());
+            return "[Checkbox detection failed]"; 
+        }
     }
     
     /**

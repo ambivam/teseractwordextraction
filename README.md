@@ -219,3 +219,6 @@ mvn clean package
 
 # 2. Run the application
 java -jar target\word-extractor-1.0.0.jar
+
+
+mvn exec:java

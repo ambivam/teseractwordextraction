@@ -105,9 +105,9 @@ Temporary Items
 
 # Application Specific
 ## Output files (keep structure but ignore content)
-# output/*.txt
-# output/*.json
-# !output/.gitkeep
+output/*.txt
+output/*.json
+!output/.gitkeep
 
 ## Temporary files
 *.tmp
