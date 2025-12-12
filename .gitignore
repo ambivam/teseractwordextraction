@@ -113,6 +113,10 @@ output/*.json
 grouping/
 !grouping/.gitkeep
 
+## Data files (keep structure but ignore content)
+data/
+!data/.gitkeep
+
 ## Temporary files
 *.tmp
 *.temp

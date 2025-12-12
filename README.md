@@ -230,3 +230,30 @@ java -cp "target/classes" com.tesseract.wordextractor.FileGroupingManager
 java -cp "target/classes" com.tesseract.wordextractor.ImprovedFileGroupingManager
 
 #*******************
+
+# Memory Optimization for Large File Processing
+
+## For processing many files (50+ files) or large files, use increased heap memory:
+
+# Option 1: Use the memory-optimized batch file (RECOMMENDED)
+run_with_memory.bat
+
+# Option 2: Using Maven with memory settings
+set MAVEN_OPTS=-Xmx8g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+mvn exec:java
+
+# Option 3: Build JAR with dependencies and run directly
+mvn clean package
+java -Xmx8g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar target\tesseract-extractor-with-dependencies.jar
+
+# Option 4: For very large datasets (100+ files)
+mvn clean package
+java -Xmx16g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar target\tesseract-extractor-with-dependencies.jar
+
+# Memory Management Features:
+# - Reduced thread pool size from 8 to 4 threads to prevent memory issues
+# - Batch processing: Files are processed in smaller batches with memory monitoring
+# - Automatic garbage collection between batches
+# - Graceful handling of OutOfMemoryError with batch completion
+
+#*******************.

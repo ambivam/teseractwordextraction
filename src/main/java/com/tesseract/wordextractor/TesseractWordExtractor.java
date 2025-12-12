@@ -65,10 +65,14 @@ public class TesseractWordExtractor {
     
     private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH_QUALITY;
     
-    // Multithreading configuration
+    // Multithreading configuration - optimized for memory usage
     private static final int DEFAULT_THREAD_POOL_SIZE = Math.max(2, Runtime.getRuntime().availableProcessors() - 1);
-    private static final int MAX_THREAD_POOL_SIZE = 8; // Prevent excessive resource usage
+    private static final int MAX_THREAD_POOL_SIZE = 4; // Reduced from 8 to prevent memory issues
     private static final int OPTIMAL_THREAD_POOL_SIZE = Math.min(DEFAULT_THREAD_POOL_SIZE, MAX_THREAD_POOL_SIZE);
+    
+    // Memory management
+    private static final long MAX_HEAP_MEMORY = Runtime.getRuntime().maxMemory();
+    private static final long MEMORY_THRESHOLD = (long) (MAX_HEAP_MEMORY * 0.8); // 80% threshold
     
     // Thread pool for file processing
     private ExecutorService executorService;
@@ -342,37 +346,81 @@ public class TesseractWordExtractor {
         
         long startTime = System.currentTimeMillis();
         
-        // Create CompletableFuture for each file
+        // Create CompletableFuture for each file with memory management
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         
-        for (Path filePath : filesToProcess) {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                try {
-                    String fileName = filePath.getFileName().toString();
-                    System.out.println("[Thread-" + Thread.currentThread().getName() + "] Processing: " + fileName);
+        // Process files in smaller batches to manage memory
+        int batchSize = Math.max(1, OPTIMAL_THREAD_POOL_SIZE * 2);
+        List<List<Path>> batches = createBatches(filesToProcess, batchSize);
+        
+        LOGGER.info("Processing " + filesToProcess.size() + " files in " + batches.size() + " batches of " + batchSize + " files each");
+        
+        for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
+            List<Path> batch = batches.get(batchIndex);
+            LOGGER.info("Starting batch " + (batchIndex + 1) + "/" + batches.size() + " with " + batch.size() + " files");
+            
+            // Process current batch
+            List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
+            
+            for (Path filePath : batch) {
+                // Check memory before processing each file
+                if (isMemoryLow()) {
+                    LOGGER.warning("Memory usage high, forcing garbage collection...");
+                    System.gc();
+                    Thread.yield(); // Give GC time to work
                     
-                    // Process file with thread-safe method
-                    processFileThreadSafe(filePath.toString());
-                    
-                    successfulFiles.incrementAndGet();
-                    processingResults.put(fileName, "SUCCESS");
-                    System.out.println("[Thread-" + Thread.currentThread().getName() + "] ✓ Successfully processed: " + fileName);
-                    
-                } catch (Exception e) {
-                    String fileName = filePath.getFileName().toString();
-                    failedFiles.incrementAndGet();
-                    processingResults.put(fileName, "FAILED: " + e.getMessage());
-                    LOGGER.log(Level.SEVERE, "Error processing file: " + filePath, e);
-                    System.err.println("[Thread-" + Thread.currentThread().getName() + "] ✗ Error processing " + fileName + ": " + e.getMessage());
-                } finally {
-                    int completed = processedFiles.incrementAndGet();
-                    if (completed % 5 == 0 || completed == filesToProcess.size()) {
-                        System.out.println("Progress: " + completed + "/" + filesToProcess.size() + " files processed");
+                    // Wait a bit and check again
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
                     }
                 }
-            }, executorService);
+                
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    try {
+                        String fileName = filePath.getFileName().toString();
+                        System.out.println("[Thread-" + Thread.currentThread().getName() + "] Processing: " + fileName);
+                        
+                        // Process file with thread-safe method
+                        processFileThreadSafe(filePath.toString());
+                        
+                        successfulFiles.incrementAndGet();
+                        processingResults.put(fileName, "SUCCESS");
+                        System.out.println("[Thread-" + Thread.currentThread().getName() + "] ✓ Successfully processed: " + fileName);
+                        
+                    } catch (Exception e) {
+                        String fileName = filePath.getFileName().toString();
+                        failedFiles.incrementAndGet();
+                        processingResults.put(fileName, "FAILED: " + e.getMessage());
+                        LOGGER.log(Level.SEVERE, "Error processing file: " + filePath, e);
+                        System.err.println("[Thread-" + Thread.currentThread().getName() + "] ✗ Error processing " + fileName + ": " + e.getMessage());
+                    } finally {
+                        int completed = processedFiles.incrementAndGet();
+                        if (completed % 5 == 0 || completed == filesToProcess.size()) {
+                            System.out.println("Progress: " + completed + "/" + filesToProcess.size() + " files processed");
+                        }
+                    }
+                }, executorService);
+                
+                batchFutures.add(future);
+            }
             
-            futures.add(future);
+            // Wait for current batch to complete before starting next batch
+            try {
+                CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0])).get();
+                LOGGER.info("Completed batch " + (batchIndex + 1) + "/" + batches.size());
+                
+                // Force garbage collection between batches
+                if (batchIndex < batches.size() - 1) {
+                    System.gc();
+                    Thread.sleep(500); // Brief pause between batches
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error processing batch " + (batchIndex + 1), e);
+            }
+            
+            futures.addAll(batchFutures);
         }
         
         // Wait for all files to complete
@@ -1756,5 +1804,26 @@ public class TesseractWordExtractor {
         public int getWidth() { return width; }
         public int getHeight() { return height; }
         public float getConfidence() { return confidence; }
+    }
+    
+    /**
+     * Check if memory usage is approaching the threshold
+     */
+    private boolean isMemoryLow() {
+        Runtime runtime = Runtime.getRuntime();
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+        return usedMemory > MEMORY_THRESHOLD;
+    }
+    
+    /**
+     * Create batches of files for processing
+     */
+    private List<List<Path>> createBatches(List<Path> files, int batchSize) {
+        List<List<Path>> batches = new ArrayList<>();
+        for (int i = 0; i < files.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, files.size());
+            batches.add(new ArrayList<>(files.subList(i, end)));
+        }
+        return batches;
     }
 }
