@@ -92,10 +92,10 @@ Example JSON structure:
 
 ## Features
 
-- **Configurable Processing Modes**: Choose between speed and accuracy
-  - **FAST** (300 DPI): Quick processing with good accuracy
-  - **BALANCED** (400 DPI): Optimal speed/accuracy balance (default)
-  - **HIGH_QUALITY** (600 DPI): Maximum accuracy, slower processing
+- **High-Quality Processing Modes**: Optimized for comprehensive information extraction
+  - **ULTRA_HIGH_QUALITY** (800 DPI): Minimum recommended quality for comprehensive extraction
+  - **MAXIMUM_QUALITY** (1000 DPI): **DEFAULT** - Optimal for critical document processing
+  - **EXTREME_QUALITY** (1200 DPI): Maximum quality for damaged or low-quality documents
 - **Optimized Image Processing**: Fast single-pass enhancement with contrast boost and edge sharpening
 - **Enhanced Special Character Support**: Uses English + Spanish language models for better recognition of accented characters (á, é, í, ó, ú, ñ, etc.)
 - **UTF-8 Support**: Handles special characters and international text with proper encoding
@@ -136,17 +136,21 @@ Example JSON structure:
 You can modify OCR settings in the `TesseractWordExtractor` class:
 
 ### Processing Mode Configuration
+**DEFAULT: MAXIMUM_QUALITY (1000 DPI)** - Optimized for comprehensive information extraction
+
 To change the processing mode, modify the `PROCESSING_MODE` constant:
 ```java
-// For fastest processing (good for large documents)
-private static final ProcessingMode PROCESSING_MODE = ProcessingMode.FAST;
+// Minimum recommended quality for comprehensive extraction
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH_QUALITY;
 
-// For balanced performance (default - recommended)
-private static final ProcessingMode PROCESSING_MODE = ProcessingMode.BALANCED;
+// DEFAULT - Optimal for critical document processing (RECOMMENDED)
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.MAXIMUM_QUALITY;
 
-// For maximum accuracy (best for critical documents)
-private static final ProcessingMode PROCESSING_MODE = ProcessingMode.HIGH_QUALITY;
+// Maximum quality for damaged or low-quality documents
+private static final ProcessingMode PROCESSING_MODE = ProcessingMode.EXTREME_QUALITY;
 ```
+
+**Note**: The application enforces a minimum quality threshold of ULTRA_HIGH_QUALITY (800 DPI) to ensure comprehensive information extraction. Lower quality modes are deprecated and will cause initialization to fail.
 
 ### Other OCR Settings
 - `setLanguage()`: Change OCR language (default: "eng+spa" for English + Spanish)
@@ -250,10 +254,14 @@ java -Xmx8g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar target\tesseract-extracto
 mvn clean package
 java -Xmx16g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -jar target\tesseract-extractor-with-dependencies.jar
 
+#Test
+java -Xmx12g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m -jar target\tesseract-extractor-with-dependencies.jar
+
 # Memory Management Features:
-# - Reduced thread pool size from 8 to 4 threads to prevent memory issues
+# - Optimized thread pool: 10-16 threads for high-performance processing
 # - Batch processing: Files are processed in smaller batches with memory monitoring
 # - Automatic garbage collection between batches
 # - Graceful handling of OutOfMemoryError with batch completion
+# - Memory threshold monitoring: 80% heap usage triggers batch completion
 
 #*******************.

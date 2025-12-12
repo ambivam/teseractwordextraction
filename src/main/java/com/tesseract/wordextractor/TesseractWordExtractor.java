@@ -51,28 +51,36 @@ public class TesseractWordExtractor {
     );
     private static final List<String> SUPPORTED_PDF_EXTENSIONS = Arrays.asList(".pdf");
     
-    // Performance modes - users can modify this for their needs
+    // Performance modes - optimized for maximum extraction quality
     public enum ProcessingMode {
-        FAST(300),      // Fast processing, good accuracy
-        BALANCED(400),  // Balanced speed and accuracy (default)
-        HIGH_QUALITY(600), // Maximum accuracy, slower processing
-        ULTRA_HIGH_QUALITY(800); // Ultra high quality for images with small text
+        FAST(300),      // Fast processing, good accuracy (deprecated - not recommended)
+        BALANCED(400),  // Balanced speed and accuracy (deprecated - not recommended)
+        HIGH_QUALITY(600), // High accuracy (deprecated - not recommended)
+        ULTRA_HIGH_QUALITY(800), // Ultra high quality for comprehensive extraction (minimum recommended)
+        MAXIMUM_QUALITY(1000),   // Maximum quality for critical document processing
+        EXTREME_QUALITY(1200);   // Extreme quality for damaged or low-quality documents
         
         private final int dpi;
         ProcessingMode(int dpi) { this.dpi = dpi; }
         public int getDpi() { return dpi; }
     }
     
-    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.ULTRA_HIGH_QUALITY;
+    // Always use MAXIMUM_QUALITY for comprehensive information extraction
+    private static final ProcessingMode PROCESSING_MODE = ProcessingMode.MAXIMUM_QUALITY;
     
-    // Multithreading configuration - optimized for memory usage
+    // Minimum acceptable quality level for comprehensive extraction
+    private static final ProcessingMode MIN_QUALITY_THRESHOLD = ProcessingMode.ULTRA_HIGH_QUALITY;
+    
+    // Multithreading configuration - optimized for performance with adequate memory
     private static final int DEFAULT_THREAD_POOL_SIZE = Math.max(2, Runtime.getRuntime().availableProcessors() - 1);
-    private static final int MAX_THREAD_POOL_SIZE = 4; // Reduced from 8 to prevent memory issues
-    private static final int OPTIMAL_THREAD_POOL_SIZE = Math.min(DEFAULT_THREAD_POOL_SIZE, MAX_THREAD_POOL_SIZE);
+    private static final int MIN_THREAD_POOL_SIZE = 10; // Minimum 10 threads for optimal performance
+    private static final int MAX_THREAD_POOL_SIZE = 16; // Maximum threads to prevent excessive memory usage
+    private static final int OPTIMAL_THREAD_POOL_SIZE = Math.max(MIN_THREAD_POOL_SIZE, Math.min(DEFAULT_THREAD_POOL_SIZE, MAX_THREAD_POOL_SIZE));
     
-    // Memory management
+    // Memory management and batch processing
     private static final long MAX_HEAP_MEMORY = Runtime.getRuntime().maxMemory();
-    private static final long MEMORY_THRESHOLD = (long) (MAX_HEAP_MEMORY * 0.8); // 80% threshold
+    private static final long MEMORY_THRESHOLD = (long) (MAX_HEAP_MEMORY * 0.7); // 70% threshold (more conservative)
+    private static final int CONCURRENT_BATCH_SIZE = Math.max(3, OPTIMAL_THREAD_POOL_SIZE / 3); // Smaller batches for better memory management
     
     // Thread pool for file processing
     private ExecutorService executorService;
@@ -188,8 +196,13 @@ public class TesseractWordExtractor {
                 LOGGER.warning("Could not list available languages: " + e.getMessage());
             }
             
+            // Validate processing quality
+            validateProcessingQuality();
+            
             LOGGER.info("Tesseract initialized successfully");
             LOGGER.info("Processing mode: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI)");
+            LOGGER.info("Quality level: MAXIMUM - Optimized for comprehensive information extraction");
+            LOGGER.info("Thread pool size: " + OPTIMAL_THREAD_POOL_SIZE + " threads (min: " + MIN_THREAD_POOL_SIZE + ", max: " + MAX_THREAD_POOL_SIZE + ")");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error initializing Tesseract", e);
             // Clean up thread pool if initialization fails
@@ -350,7 +363,7 @@ public class TesseractWordExtractor {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         
         // Process files in smaller batches to manage memory
-        int batchSize = Math.max(1, OPTIMAL_THREAD_POOL_SIZE * 2);
+        int batchSize = CONCURRENT_BATCH_SIZE;
         List<List<Path>> batches = createBatches(filesToProcess, batchSize);
         
         LOGGER.info("Processing " + filesToProcess.size() + " files in " + batches.size() + " batches of " + batchSize + " files each");
@@ -1804,6 +1817,23 @@ public class TesseractWordExtractor {
         public int getWidth() { return width; }
         public int getHeight() { return height; }
         public float getConfidence() { return confidence; }
+    }
+    
+    /**
+     * Validate that processing quality meets minimum standards for comprehensive extraction
+     */
+    private void validateProcessingQuality() {
+        if (PROCESSING_MODE.getDpi() < MIN_QUALITY_THRESHOLD.getDpi()) {
+            String message = "Processing mode " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI) " +
+                           "is below minimum quality threshold " + MIN_QUALITY_THRESHOLD + " (" + MIN_QUALITY_THRESHOLD.getDpi() + " DPI). " +
+                           "For comprehensive information extraction, use ULTRA_HIGH_QUALITY or higher.";
+            LOGGER.severe(message);
+            System.err.println("ERROR: " + message);
+            throw new IllegalStateException("Insufficient processing quality for comprehensive extraction");
+        }
+        
+        LOGGER.info("Quality validation passed: " + PROCESSING_MODE + " meets minimum standards for comprehensive extraction");
+        System.out.println("✓ Processing Quality: " + PROCESSING_MODE + " (" + PROCESSING_MODE.getDpi() + " DPI) - Optimized for maximum information extraction");
     }
     
     /**

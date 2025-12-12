@@ -22,13 +22,16 @@ public class ImprovedFileGroupingManager {
     private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.3; // Lowered for better grouping
     private static final int MIN_SHARED_ELEMENTS = 2;
     
-    // Enhanced patterns for better data extraction
+    // Enhanced patterns for better data extraction with special character handling
     private static final Pattern EMAIL_PATTERN = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b");
-    private static final Pattern DATE_PATTERN = Pattern.compile("\\b\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4}\\b|\\b\\d{4}[/\\-]\\d{1,2}[/\\-]\\d{1,2}\\b");
-    private static final Pattern CURRENCY_PATTERN = Pattern.compile("\\b\\d+[.,]\\d{2}\\b|R\\$\\s*\\d+[.,]\\d{2}");
-    private static final Pattern ID_PATTERN = Pattern.compile("\\b\\d{8,}\\b");
-    private static final Pattern PHONE_PATTERN = Pattern.compile("\\b\\(?\\d{2,3}\\)?[\\s\\-]?\\d{4,5}[\\s\\-]?\\d{4}\\b");
-    private static final Pattern CARD_PATTERN = Pattern.compile("\\b\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}\\b");
+    private static final Pattern DATE_PATTERN = Pattern.compile("\\b\\d{1,2}[/\\-\\.]\\d{1,2}[/\\-\\.]\\d{2,4}\\b|\\b\\d{4}[/\\-\\.]\\d{1,2}[/\\-\\.]\\d{1,2}\\b");
+    private static final Pattern CURRENCY_PATTERN = Pattern.compile("R\\$[\\s]*\\d+[.,]\\d{2}|\\$[\\s]*\\d+[.,]\\d{2}|\\d+[.,]\\d{2}[\\s]*(?:reais?|real|BRL|USD)");
+    private static final Pattern ID_PATTERN = Pattern.compile("\\b\\d{6,}(?:[\\s\\-\\._]\\d+)*\\b");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("\\b\\(?\\d{2,3}\\)?[\\s\\-\\.]?\\d{4,5}[\\s\\-\\.]?\\d{4}\\b");
+    private static final Pattern CARD_PATTERN = Pattern.compile("\\b\\d{4}[\\s\\-\\*\\.]?\\d{4}[\\s\\-\\*\\.]?\\d{4}[\\s\\-\\*\\.]?\\d{4}\\b");
+    private static final Pattern REFERENCE_PATTERN = Pattern.compile("\\b(?:ref|referência|reference|código|code|id)[\\s:]*([A-Za-z0-9\\-\\_\\.]+)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ACCOUNT_PATTERN = Pattern.compile("\\b(?:conta|account|acc)[\\s:]*([A-Za-z0-9\\-\\_\\.]+)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MERCHANT_PATTERN = Pattern.compile("\\b(?:merchant|comerciante|loja)[\\s:]*([A-Za-z0-9\\s\\-\\_\\.]+)\\b", Pattern.CASE_INSENSITIVE);
     
     // Enhanced document type classification
     private static final Map<String, Set<String>> DOCUMENT_TYPE_KEYWORDS = new HashMap<>();
@@ -55,6 +58,9 @@ public class ImprovedFileGroupingManager {
         private final Set<String> ids;
         private final Set<String> phones;
         private final Set<String> cards;
+        private final Set<String> references;
+        private final Set<String> accounts;
+        private final Set<String> merchants;
         private final String documentType;
         private final Map<String, Integer> keywordFrequency;
         private final double contentLength;
@@ -71,6 +77,9 @@ public class ImprovedFileGroupingManager {
             this.ids = extractPatterns(ID_PATTERN, content);
             this.phones = extractPatterns(PHONE_PATTERN, content);
             this.cards = extractPatterns(CARD_PATTERN, content);
+            this.references = extractGroupPatterns(REFERENCE_PATTERN, content, 1);
+            this.accounts = extractGroupPatterns(ACCOUNT_PATTERN, content, 1);
+            this.merchants = extractGroupPatterns(MERCHANT_PATTERN, content, 1);
             this.keywordFrequency = calculateKeywordFrequency(this.content);
             this.documentType = determineDocumentType(this.content, this.keywords);
             this.contentLength = content.length();
@@ -91,6 +100,28 @@ public class ImprovedFileGroupingManager {
                 matches.add(matcher.group().trim());
             }
             return matches;
+        }
+        
+        private Set<String> extractGroupPatterns(Pattern pattern, String content, int groupIndex) {
+            Set<String> matches = new HashSet<>();
+            Matcher matcher = pattern.matcher(content);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= groupIndex) {
+                    String match = matcher.group(groupIndex);
+                    if (match != null && !match.trim().isEmpty()) {
+                        matches.add(normalizeSpecialCharacters(match.trim()));
+                    }
+                }
+            }
+            return matches;
+        }
+        
+        private String normalizeSpecialCharacters(String text) {
+            // Normalize special characters that might appear in OCR text
+            return text.replaceAll("[\\s\\-\\_\\.]+", " ")
+                      .replaceAll("\\s+", " ")
+                      .trim()
+                      .toLowerCase();
         }
         
         private Map<String, Integer> calculateKeywordFrequency(String content) {
@@ -157,6 +188,9 @@ public class ImprovedFileGroupingManager {
         public Set<String> getIds() { return ids; }
         public Set<String> getPhones() { return phones; }
         public Set<String> getCards() { return cards; }
+        public Set<String> getReferences() { return references; }
+        public Set<String> getAccounts() { return accounts; }
+        public Set<String> getMerchants() { return merchants; }
         public String getDocumentType() { return documentType; }
         public Map<String, Integer> getKeywordFrequency() { return keywordFrequency; }
         public double getContentLength() { return contentLength; }
@@ -327,6 +361,11 @@ public class ImprovedFileGroupingManager {
         // Step 2: Group by shared IDs
         groups.addAll(groupBySharedIds(fileAnalyses));
         
+        // Step 2.5: Group by shared references, accounts, and merchants
+        groups.addAll(groupBySharedReferences(fileAnalyses));
+        groups.addAll(groupBySharedAccounts(fileAnalyses));
+        groups.addAll(groupBySharedMerchants(fileAnalyses));
+        
         // Step 3: Group by document type and content similarity
         groups.addAll(groupByContentSimilarity(fileAnalyses));
         
@@ -412,6 +451,135 @@ public class ImprovedFileGroupingManager {
         return groups;
     }
     
+    private List<EnhancedFileGroup> groupBySharedReferences(List<EnhancedFileAnalysis> files) {
+        List<EnhancedFileGroup> groups = new ArrayList<>();
+        Map<String, List<EnhancedFileAnalysis>> refGroups = new HashMap<>();
+        
+        // Group files by shared references (only ungrouped files)
+        for (EnhancedFileAnalysis file : files) {
+            if (!file.grouped) {
+                for (String ref : file.getReferences()) {
+                    if (ref.length() >= 4) { // Only consider meaningful references
+                        refGroups.computeIfAbsent(ref, k -> new ArrayList<>()).add(file);
+                    }
+                }
+            }
+        }
+        
+        // Create groups for references with multiple files
+        int groupCounter = 1;
+        for (Map.Entry<String, List<EnhancedFileAnalysis>> entry : refGroups.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                String ref = entry.getKey();
+                EnhancedFileGroup group = new EnhancedFileGroup(
+                    "REF_GROUP_" + groupCounter++, 
+                    "SHARED_REFERENCE", 
+                    "Files sharing reference: " + ref
+                );
+                
+                for (EnhancedFileAnalysis file : entry.getValue()) {
+                    if (!file.grouped) {
+                        group.addFile(file);
+                        file.grouped = true;
+                    }
+                }
+                
+                if (group.getFileCount() > 1) {
+                    groups.add(group);
+                    LOGGER.info("Created reference group with " + group.getFileCount() + " files sharing: " + ref);
+                }
+            }
+        }
+        
+        return groups;
+    }
+    
+    private List<EnhancedFileGroup> groupBySharedAccounts(List<EnhancedFileAnalysis> files) {
+        List<EnhancedFileGroup> groups = new ArrayList<>();
+        Map<String, List<EnhancedFileAnalysis>> accGroups = new HashMap<>();
+        
+        // Group files by shared accounts (only ungrouped files)
+        for (EnhancedFileAnalysis file : files) {
+            if (!file.grouped) {
+                for (String acc : file.getAccounts()) {
+                    if (acc.length() >= 3) { // Only consider meaningful accounts
+                        accGroups.computeIfAbsent(acc, k -> new ArrayList<>()).add(file);
+                    }
+                }
+            }
+        }
+        
+        // Create groups for accounts with multiple files
+        int groupCounter = 1;
+        for (Map.Entry<String, List<EnhancedFileAnalysis>> entry : accGroups.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                String acc = entry.getKey();
+                EnhancedFileGroup group = new EnhancedFileGroup(
+                    "ACCOUNT_GROUP_" + groupCounter++, 
+                    "SHARED_ACCOUNT", 
+                    "Files sharing account: " + acc
+                );
+                
+                for (EnhancedFileAnalysis file : entry.getValue()) {
+                    if (!file.grouped) {
+                        group.addFile(file);
+                        file.grouped = true;
+                    }
+                }
+                
+                if (group.getFileCount() > 1) {
+                    groups.add(group);
+                    LOGGER.info("Created account group with " + group.getFileCount() + " files sharing: " + acc);
+                }
+            }
+        }
+        
+        return groups;
+    }
+    
+    private List<EnhancedFileGroup> groupBySharedMerchants(List<EnhancedFileAnalysis> files) {
+        List<EnhancedFileGroup> groups = new ArrayList<>();
+        Map<String, List<EnhancedFileAnalysis>> merchGroups = new HashMap<>();
+        
+        // Group files by shared merchants (only ungrouped files)
+        for (EnhancedFileAnalysis file : files) {
+            if (!file.grouped) {
+                for (String merch : file.getMerchants()) {
+                    if (merch.length() >= 3) { // Only consider meaningful merchant names
+                        merchGroups.computeIfAbsent(merch, k -> new ArrayList<>()).add(file);
+                    }
+                }
+            }
+        }
+        
+        // Create groups for merchants with multiple files
+        int groupCounter = 1;
+        for (Map.Entry<String, List<EnhancedFileAnalysis>> entry : merchGroups.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                String merch = entry.getKey();
+                EnhancedFileGroup group = new EnhancedFileGroup(
+                    "MERCHANT_GROUP_" + groupCounter++, 
+                    "SHARED_MERCHANT", 
+                    "Files sharing merchant: " + merch
+                );
+                
+                for (EnhancedFileAnalysis file : entry.getValue()) {
+                    if (!file.grouped) {
+                        group.addFile(file);
+                        file.grouped = true;
+                    }
+                }
+                
+                if (group.getFileCount() > 1) {
+                    groups.add(group);
+                    LOGGER.info("Created merchant group with " + group.getFileCount() + " files sharing: " + merch);
+                }
+            }
+        }
+        
+        return groups;
+    }
+    
     private List<EnhancedFileGroup> groupByContentSimilarity(List<EnhancedFileAnalysis> files) {
         List<EnhancedFileGroup> groups = new ArrayList<>();
         Map<String, List<EnhancedFileAnalysis>> typeGroups = new HashMap<>();
@@ -487,22 +655,38 @@ public class ImprovedFileGroupingManager {
     }
     
     /**
-     * Enhanced similarity calculation with multiple criteria
+     * Enhanced similarity calculation with multiple criteria including special character handling
      */
     private double calculateEnhancedSimilarity(EnhancedFileAnalysis file1, EnhancedFileAnalysis file2) {
         // Keyword similarity with frequency weighting
         double keywordSim = calculateWeightedKeywordSimilarity(file1, file2);
         
-        // Shared data elements similarity
+        // Shared data elements similarity with enhanced patterns
         double emailSim = calculateJaccardSimilarity(file1.getEmails(), file2.getEmails());
         double idSim = calculateJaccardSimilarity(file1.getIds(), file2.getIds());
         double cardSim = calculateJaccardSimilarity(file1.getCards(), file2.getCards());
+        double refSim = calculateJaccardSimilarity(file1.getReferences(), file2.getReferences());
+        double accSim = calculateJaccardSimilarity(file1.getAccounts(), file2.getAccounts());
+        double merchSim = calculateJaccardSimilarity(file1.getMerchants(), file2.getMerchants());
+        
+        // Phone and date similarity for additional context
+        double phoneSim = calculateJaccardSimilarity(file1.getPhones(), file2.getPhones());
+        double dateSim = calculateJaccardSimilarity(file1.getDates(), file2.getDates());
         
         // Document type bonus
-        double typeBonus = file1.getDocumentType().equals(file2.getDocumentType()) ? 0.2 : 0.0;
+        double typeBonus = file1.getDocumentType().equals(file2.getDocumentType()) ? 0.15 : 0.0;
         
-        // Weighted combination
-        double similarity = (keywordSim * 0.4) + (emailSim * 0.2) + (idSim * 0.2) + (cardSim * 0.1) + typeBonus;
+        // Enhanced weighted combination with more criteria
+        double similarity = (keywordSim * 0.25) +      // Reduced keyword weight
+                           (emailSim * 0.15) +         // Email matches are important
+                           (idSim * 0.15) +            // ID matches are important
+                           (refSim * 0.12) +           // Reference matches
+                           (accSim * 0.10) +           // Account matches
+                           (merchSim * 0.08) +         // Merchant matches
+                           (cardSim * 0.05) +          // Card matches
+                           (phoneSim * 0.05) +         // Phone matches
+                           (dateSim * 0.05) +          // Date matches
+                           typeBonus;                   // Document type bonus
         
         return Math.min(1.0, similarity);
     }

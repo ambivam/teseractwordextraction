@@ -14,8 +14,9 @@ if %errorlevel% neq 0 (
 
 echo.
 echo Starting OCR processing with memory optimization...
+echo - Processing Quality: MAXIMUM_QUALITY (1000 DPI) - Comprehensive extraction
 echo - Heap Size: 8GB
-echo - Thread Pool: 4 threads (reduced for memory efficiency)
+echo - Thread Pool: 10-16 threads (optimized for high performance)
 echo - Batch Processing: Enabled with memory monitoring
 echo - Garbage Collection: Automatic between batches
 echo.
