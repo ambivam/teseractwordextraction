@@ -308,6 +308,9 @@ public class ImprovedFileGroupingManager {
         // Step 3: Create folder structure and organize files
         createEnhancedGroupingStructure(groups);
         
+        // Step 3.5: Create unique folder for ungrouped files
+        createUniqueFilesFolder(fileAnalyses, groups);
+        
         // Step 4: Generate detailed summary report
         generateEnhancedGroupingSummary(groups);
         
@@ -920,6 +923,108 @@ public class ImprovedFileGroupingManager {
     }
     
     /**
+     * Create unique folder for ungrouped files
+     */
+    private void createUniqueFilesFolder(List<EnhancedFileAnalysis> fileAnalyses, List<EnhancedFileGroup> groups) throws IOException {
+        // Calculate ungrouped files
+        Set<String> groupedFiles = groups.stream()
+            .flatMap(g -> g.getFiles().stream())
+            .map(f -> f.getFileName())
+            .collect(Collectors.toSet());
+        
+        List<EnhancedFileAnalysis> ungroupedFiles = fileAnalyses.stream()
+            .filter(file -> !groupedFiles.contains(file.getFileName()))
+            .collect(Collectors.toList());
+        
+        if (ungroupedFiles.isEmpty()) {
+            LOGGER.info("No ungrouped files found - all files were successfully grouped");
+            return;
+        }
+        
+        // Create unique folder
+        Path groupingPath = Paths.get(GROUPING_DIR);
+        Path uniqueDir = groupingPath.resolve("UNIQUE");
+        Files.createDirectories(uniqueDir);
+        
+        LOGGER.info("Creating UNIQUE folder for " + ungroupedFiles.size() + " ungrouped files");
+        
+        // Copy ungrouped files to unique folder
+        for (EnhancedFileAnalysis file : ungroupedFiles) {
+            try {
+                Path sourcePath = Paths.get(file.getFilePath());
+                Path targetPath = uniqueDir.resolve(file.getFileName());
+                
+                // Copy text file
+                Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                
+                // Also copy corresponding JSON file if exists
+                String jsonFileName = file.getFileName().replace("_comprehensive.txt", "_comprehensive.json");
+                Path jsonSourcePath = sourcePath.getParent().resolve(jsonFileName);
+                if (Files.exists(jsonSourcePath)) {
+                    Path jsonTargetPath = uniqueDir.resolve(jsonFileName);
+                    Files.copy(jsonSourcePath, jsonTargetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+                
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error copying unique file: " + file.getFileName(), e);
+            }
+        }
+        
+        // Create summary file for unique folder
+        createUniqueFilesSummary(uniqueDir, ungroupedFiles);
+        
+        LOGGER.info("Created UNIQUE folder with " + ungroupedFiles.size() + " files (Files with no significant similarities)");
+    }
+    
+    /**
+     * Create summary file for unique files folder
+     */
+    private void createUniqueFilesSummary(Path uniqueDir, List<EnhancedFileAnalysis> ungroupedFiles) throws IOException {
+        Path summaryPath = uniqueDir.resolve("UNIQUE_FILES_SUMMARY.txt");
+        
+        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(summaryPath))) {
+            writer.println("=== UNIQUE FILES SUMMARY ===");
+            writer.println("Folder: UNIQUE");
+            writer.println("Description: Files with no significant similarities to other documents");
+            writer.println("File Count: " + ungroupedFiles.size());
+            writer.println("Generated: " + new Date());
+            writer.println();
+            
+            writer.println("=== UNIQUE FILES LIST ===");
+            for (EnhancedFileAnalysis file : ungroupedFiles) {
+                writer.println("- " + file.getFileName() + " (Type: " + file.getDocumentType() + 
+                               ", Keywords: " + file.getKeywords().size() + 
+                               ", IDs: " + file.getIds().size() + 
+                               ", Emails: " + file.getEmails().size() + ")");
+            }
+            writer.println();
+            
+            writer.println("=== DOCUMENT TYPE BREAKDOWN ===");
+            Map<String, Long> typeCount = ungroupedFiles.stream()
+                .collect(Collectors.groupingBy(EnhancedFileAnalysis::getDocumentType, Collectors.counting()));
+            
+            for (Map.Entry<String, Long> entry : typeCount.entrySet()) {
+                writer.println(entry.getKey() + ": " + entry.getValue() + " files");
+            }
+            writer.println();
+            
+            writer.println("=== INDIVIDUAL FILE DETAILS ===");
+            for (EnhancedFileAnalysis file : ungroupedFiles) {
+                writer.println("File: " + file.getFileName());
+                writer.println("  Document Type: " + file.getDocumentType());
+                writer.println("  Content Length: " + (int)file.getContentLength() + " characters");
+                writer.println("  Unique Keywords: " + file.getKeywords().size());
+                writer.println("  Emails Found: " + file.getEmails().size());
+                writer.println("  IDs Found: " + file.getIds().size());
+                writer.println("  Dates Found: " + file.getDates().size());
+                writer.println("  Currency Values: " + file.getCurrencies().size());
+                writer.println("  Reason for uniqueness: No shared IDs, accounts, or significant content similarity with other files");
+                writer.println();
+            }
+        }
+    }
+    
+    /**
      * Display grouping summary including ungrouped files
      */
     private void displayGroupingSummary(List<EnhancedFileAnalysis> fileAnalyses, List<EnhancedFileGroup> groups) {
@@ -943,8 +1048,9 @@ public class ImprovedFileGroupingManager {
         System.out.println("Groups with shared IDs: " + groups.stream().mapToInt(g -> g.getSharedIds().isEmpty() ? 0 : 1).sum());
         
         if (!ungroupedFiles.isEmpty()) {
-            System.out.println("\n=== UNGROUPED FILES (No significant similarities found) ===");
+            System.out.println("\n=== UNIQUE FILES (Organized in UNIQUE folder) ===");
             ungroupedFiles.forEach(fileName -> System.out.println("- " + fileName));
+            System.out.println("These files have been placed in: " + GROUPING_DIR + "\\UNIQUE\\");
         }
         
         System.out.println("\nResults saved in: " + GROUPING_DIR);
