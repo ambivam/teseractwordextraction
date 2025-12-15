@@ -311,6 +311,9 @@ public class ImprovedFileGroupingManager {
         // Step 4: Generate detailed summary report
         generateEnhancedGroupingSummary(groups);
         
+        // Step 5: Display summary including ungrouped files
+        displayGroupingSummary(fileAnalyses, groups);
+        
         LOGGER.info("Enhanced file grouping process completed successfully");
     }
     
@@ -326,14 +329,27 @@ public class ImprovedFileGroupingManager {
             return analyses;
         }
         
+        int totalFiles = 0;
+        int successfulFiles = 0;
+        int failedFiles = 0;
+        
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(outputPath, "*.txt")) {
             for (Path filePath : stream) {
+                totalFiles++;
                 try {
                     String content = Files.readString(filePath);
                     String fileName = filePath.getFileName().toString();
                     
+                    // Skip empty or very small files
+                    if (content.trim().length() < 50) {
+                        LOGGER.warning("Skipping file with insufficient content: " + fileName + " (length: " + content.length() + ")");
+                        failedFiles++;
+                        continue;
+                    }
+                    
                     EnhancedFileAnalysis analysis = new EnhancedFileAnalysis(fileName, filePath.toString(), content);
                     analyses.add(analysis);
+                    successfulFiles++;
                     
                     LOGGER.info("Analyzed file: " + fileName + " (Type: " + analysis.getDocumentType() + 
                                ", Keywords: " + analysis.getKeywords().size() + 
@@ -341,10 +357,15 @@ public class ImprovedFileGroupingManager {
                                ", Emails: " + analysis.getEmails().size() + ")");
                     
                 } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error analyzing file: " + filePath, e);
+                    failedFiles++;
+                    String fileName = filePath.getFileName().toString();
+                    LOGGER.log(Level.SEVERE, "FAILED to analyze file: " + fileName + " - " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+                    System.err.println("ERROR: Failed to analyze " + fileName + " - " + e.getMessage());
                 }
             }
         }
+        
+        LOGGER.info("File analysis summary - Total: " + totalFiles + ", Successful: " + successfulFiles + ", Failed/Skipped: " + failedFiles);
         
         return analyses;
     }
@@ -896,18 +917,42 @@ public class ImprovedFileGroupingManager {
                 writer.println();
             }
         }
-        
-        System.out.println("=== ENHANCED FILE GROUPING COMPLETED ===");
-        System.out.println("Total groups created: " + groups.size());
-        System.out.println("Total files processed: " + groups.stream().mapToInt(EnhancedFileGroup::getFileCount).sum());
-        System.out.println("Groups with shared emails: " + groups.stream().mapToInt(g -> g.getSharedEmails().isEmpty() ? 0 : 1).sum());
-        System.out.println("Groups with shared IDs: " + groups.stream().mapToInt(g -> g.getSharedIds().isEmpty() ? 0 : 1).sum());
-        System.out.println("Results saved in: " + GROUPING_DIR);
-        System.out.println("Enhanced summary report: " + summaryPath);
     }
     
     /**
-     * Utility method to delete directory recursively
+     * Display grouping summary including ungrouped files
+     */
+    private void displayGroupingSummary(List<EnhancedFileAnalysis> fileAnalyses, List<EnhancedFileGroup> groups) {
+        // Calculate ungrouped files
+        Set<String> groupedFiles = groups.stream()
+            .flatMap(g -> g.getFiles().stream())
+            .map(f -> f.getFileName())
+            .collect(Collectors.toSet());
+        
+        List<String> ungroupedFiles = fileAnalyses.stream()
+            .map(EnhancedFileAnalysis::getFileName)
+            .filter(fileName -> !groupedFiles.contains(fileName))
+            .collect(Collectors.toList());
+        
+        System.out.println("=== ENHANCED FILE GROUPING COMPLETED ===");
+        System.out.println("Total files analyzed: " + fileAnalyses.size());
+        System.out.println("Total groups created: " + groups.size());
+        System.out.println("Total files in groups: " + groups.stream().mapToInt(EnhancedFileGroup::getFileCount).sum());
+        System.out.println("Total ungrouped files: " + ungroupedFiles.size());
+        System.out.println("Groups with shared emails: " + groups.stream().mapToInt(g -> g.getSharedEmails().isEmpty() ? 0 : 1).sum());
+        System.out.println("Groups with shared IDs: " + groups.stream().mapToInt(g -> g.getSharedIds().isEmpty() ? 0 : 1).sum());
+        
+        if (!ungroupedFiles.isEmpty()) {
+            System.out.println("\n=== UNGROUPED FILES (No significant similarities found) ===");
+            ungroupedFiles.forEach(fileName -> System.out.println("- " + fileName));
+        }
+        
+        System.out.println("\nResults saved in: " + GROUPING_DIR);
+        System.out.println("Enhanced summary report: " + GROUPING_DIR + "\\ENHANCED_GROUPING_SUMMARY.txt");
+    }
+    
+    /**
+     * Delete directory recursively
      */
     private void deleteDirectoryRecursively(Path directory) throws IOException {
         if (Files.exists(directory)) {

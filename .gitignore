@@ -112,6 +112,7 @@ output/*.json
 ## Grouping files (keep structure but ignore content)
 grouping/
 !grouping/.gitkeep
+grouping/*.txt
 
 ## Data files (keep structure but ignore content)
 data/
